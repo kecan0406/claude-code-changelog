@@ -1,4 +1,4 @@
-# Claude Code Flags 2.1.5
+# Claude Code Flags 2.1.6
 
 ## Feature Gates
 
@@ -21,11 +21,11 @@
 
 ## Dynamic Configs
 
-_None detected_
+- `tengu_sm_compact_config`
+- `tengu_sm_config`
 
 ## Experiments
 
-- `cache_warming`
 - `hide_overages_option_at_rate_limit_hit`
 - `preserve_thinking`
 - `prompt_cache_1h_experiment`
