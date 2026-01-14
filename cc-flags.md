@@ -1,4 +1,4 @@
-# Claude Code Flags 2.1.6
+# Claude Code Flags 2.1.7
 
 ## Feature Gates
 
@@ -26,14 +26,17 @@
 
 ## Experiments
 
+- `enhanced_telemetry_beta`
 - `hide_overages_option_at_rate_limit_hit`
 - `preserve_thinking`
 - `prompt_cache_1h_experiment`
 - `sonnet_1m_default`
 - `sonnet_45_1m_header`
+- `tengu_chrome_auto_enable`
+- `tengu_code_diff_cli`
+- `tengu_compact_streaming_retry`
 - `tengu_file_edit_optimization`
 - `tengu_mcp_tool_search`
-- `tengu_opus_default_pro_plan`
 - `tengu_permission_explainer`
 - `tengu_pid_based_version_locking`
 - `tengu_teams_usage_limit_notifications`
