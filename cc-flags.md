@@ -1,17 +1,12 @@
-# Claude Code Flags 2.1.7
+# Claude Code Flags 2.1.9
 
 ## Feature Gates
 
-- `auto_migrate_to_native`
 - `tengu_ant_attribution_header_new`
 - `tengu_c4w_usage_limit_notifications_enabled`
 - `tengu_disable_bypass_permissions_mode`
-- `tengu_native_installation`
 - `tengu_prompt_suggestion`
 - `tengu_scratch`
-- `tengu_session_index`
-- `tengu_session_memory`
-- `tengu_sm_compact`
 - `tengu_streaming_tool_execution2`
 - `tengu_sumi`
 - `tengu_thinkback`
@@ -21,8 +16,7 @@
 
 ## Dynamic Configs
 
-- `tengu_sm_compact_config`
-- `tengu_sm_config`
+_None detected_
 
 ## Experiments
 
@@ -32,6 +26,7 @@
 - `prompt_cache_1h_experiment`
 - `sonnet_1m_default`
 - `sonnet_45_1m_header`
+- `tengu_bash_haiku_prefetch`
 - `tengu_chrome_auto_enable`
 - `tengu_code_diff_cli`
 - `tengu_compact_streaming_retry`
@@ -39,6 +34,9 @@
 - `tengu_mcp_tool_search`
 - `tengu_permission_explainer`
 - `tengu_pid_based_version_locking`
+- `tengu_plan_mode_interview_phase`
+- `tengu_session_memory`
+- `tengu_sm_compact`
 - `tengu_teams_usage_limit_notifications`
 - `tengu_tool_search_unsupported_models`
 - `tool_use_examples`
