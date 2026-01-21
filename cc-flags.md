@@ -1,13 +1,11 @@
-# Claude Code Flags 2.1.14
+# Claude Code Flags 2.1.15
 
 ## Feature Gates
 
-- `tengu_ant_attribution_header_new`
 - `tengu_c4w_usage_limit_notifications_enabled`
 - `tengu_disable_bypass_permissions_mode`
 - `tengu_scratch`
 - `tengu_streaming_tool_execution2`
-- `tengu_sumi`
 - `tengu_thinkback`
 - `tengu_tool_pear`
 - `tengu_vscode_onboarding`
@@ -19,10 +17,12 @@ _None detected_
 
 ## Experiments
 
+- `ccr_plan_mode_enabled`
 - `enhanced_telemetry_beta`
 - `hide_overages_option_at_rate_limit_hit`
 - `preserve_thinking`
 - `prompt_cache_1h_experiment`
+- `tengu_attribution_header`
 - `tengu_bash_haiku_prefetch`
 - `tengu_chrome_auto_enable`
 - `tengu_code_diff_cli`
@@ -33,6 +33,7 @@ _None detected_
 - `tengu_permission_explainer`
 - `tengu_pid_based_version_locking`
 - `tengu_plan_mode_interview_phase`
+- `tengu_remote_backend`
 - `tengu_session_memory`
 - `tengu_sm_compact`
 - `tengu_tool_search_unsupported_models`
