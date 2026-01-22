@@ -1,4 +1,4 @@
-# Claude Code Flags 2.1.15
+# Claude Code Flags 2.1.16
 
 ## Feature Gates
 
@@ -24,6 +24,7 @@ _None detected_
 - `prompt_cache_1h_experiment`
 - `tengu_attribution_header`
 - `tengu_bash_haiku_prefetch`
+- `tengu_brass_pebble`
 - `tengu_chrome_auto_enable`
 - `tengu_code_diff_cli`
 - `tengu_compact_streaming_retry`
@@ -33,6 +34,7 @@ _None detected_
 - `tengu_permission_explainer`
 - `tengu_pid_based_version_locking`
 - `tengu_plan_mode_interview_phase`
+- `tengu_quartz_lantern`
 - `tengu_remote_backend`
 - `tengu_session_memory`
 - `tengu_sm_compact`

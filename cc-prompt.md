@@ -1,14 +1,13 @@
-# Claude Code Version 2.1.15
+# Claude Code Version 2.1.16
 
-Release Date: 2026-01-21
+Release Date: 2026-01-22
 
 # User Message
 
-2026-01-21T22:05:01.894Z is the date. Write a haiku about it.
+2026-01-22T20:14:02.478Z is the date. Write a haiku about it.
 
 # System Prompt
 
-x-anthropic-billing-header: cc_version=2.1.15.94d; cc_entrypoint=sdk-cli
 You are a Claude agent, built on Anthropic's Claude Agent SDK.
 
 You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
@@ -140,11 +139,11 @@ assistant: Clients are marked as failed in the `connectToServer` function in src
 
 Here is useful information about the environment you are running in:
 <env>
-Working directory: /tmp/claude-history-1769033100038-ig88r2
+Working directory: /tmp/claude-history-1769112840674-13klvo
 Is directory a git repo: No
 Platform: linux
 OS Version: Linux 6.8.0-90-generic
-Today's date: 2026-01-21
+Today's date: 2026-01-22
 </env>
 You are powered by the model named Sonnet 4.5. The exact model ID is claude-sonnet-4-5-20250929.
 
@@ -346,6 +345,7 @@ Important notes:
 - NEVER use the TodoWrite or Task tools
 - DO NOT push to the remote repository unless the user explicitly asks you to do so
 - IMPORTANT: Never use git commands with the -i flag (like git rebase -i or git add -i) since they require interactive input which is not supported.
+- IMPORTANT: Do not use --no-edit with git rebase commands, as the --no-edit flag is not a valid option for git rebase.
 - If there are no changes to commit (i.e., no untracked files and no modifications), do not create an empty commit
 - In order to ensure good formatting, ALWAYS pass the commit message via a HEREDOC, a la this example:
 <example>
@@ -651,6 +651,14 @@ Ensure your plan is complete and unambiguous:
     "remoteSessionTitle": {
       "description": "The remote session title if pushed to remote",
       "type": "string"
+    },
+    "launchSwarm": {
+      "description": "Whether to launch a swarm to implement the plan",
+      "type": "boolean"
+    },
+    "teammateCount": {
+      "description": "Number of teammates to spawn in the swarm",
+      "type": "number"
     }
   },
   "additionalProperties": {}
@@ -1048,6 +1056,26 @@ assistant: "I'm going to use the Task tool to launch the greeting-responder agen
       "type": "integer",
       "exclusiveMinimum": 0,
       "maximum": 9007199254740991
+    },
+    "name": {
+      "description": "Name for the spawned agent",
+      "type": "string"
+    },
+    "team_name": {
+      "description": "Team name for spawning. Uses current team context if omitted.",
+      "type": "string"
+    },
+    "mode": {
+      "description": "Permission mode for spawned teammate (e.g., \"plan\" to require plan approval).",
+      "type": "string",
+      "enum": [
+        "acceptEdits",
+        "bypassPermissions",
+        "default",
+        "delegate",
+        "dontAsk",
+        "plan"
+      ]
     }
   },
   "required": [
@@ -1399,7 +1427,7 @@ Usage notes:
   - Web search is only available in the US
 
 IMPORTANT - Use the correct year in search queries:
-  - Today's date is 2026-01-21. You MUST use this year when searching for recent information, documentation, or current events.
+  - Today's date is 2026-01-22. You MUST use this year when searching for recent information, documentation, or current events.
   - Example: If the user asks for "latest React docs", search for "React documentation 2026", NOT "React documentation 2025"
 
 {
