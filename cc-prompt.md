@@ -1,10 +1,10 @@
-# Claude Code Version 2.1.18
+# Claude Code Version 2.1.19
 
-Release Date: 2026-01-22
+Release Date: 2026-01-23
 
 # User Message
 
-2026-01-23T21:57:20.236Z is the date. Write a haiku about it.
+2026-01-23T21:57:28.397Z is the date. Write a haiku about it.
 
 # System Prompt
 
@@ -139,7 +139,7 @@ assistant: Clients are marked as failed in the `connectToServer` function in src
 
 Here is useful information about the environment you are running in:
 <env>
-Working directory: /tmp/claude-history-1769205438150-0im3mh
+Working directory: /tmp/claude-history-1769205446586-82y1sv
 Is directory a git repo: No
 Platform: linux
 OS Version: Linux 6.8.0-90-generic
@@ -651,14 +651,6 @@ Ensure your plan is complete and unambiguous:
     "remoteSessionTitle": {
       "description": "The remote session title if pushed to remote",
       "type": "string"
-    },
-    "launchSwarm": {
-      "description": "Whether to launch a swarm to implement the plan",
-      "type": "boolean"
-    },
-    "teammateCount": {
-      "description": "Number of teammates to spawn in the swarm",
-      "type": "number"
     }
   },
   "additionalProperties": {}
@@ -778,32 +770,6 @@ A powerful search tool built on ripgrep
 
 ---
 
-## KillShell
-
-
-- Kills a running background bash shell by its ID
-- Takes a shell_id parameter identifying the shell to kill
-- Returns a success or failure status 
-- Use this tool when you need to terminate a long-running shell
-- Shell IDs can be found using the /tasks command
-
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "properties": {
-    "shell_id": {
-      "description": "The ID of the background shell to kill",
-      "type": "string"
-    }
-  },
-  "required": [
-    "shell_id"
-  ],
-  "additionalProperties": false
-}
-
----
-
 ## NotebookEdit
 
 Completely replaces the contents of a specific cell in a Jupyter notebook (.ipynb file) with new source. Jupyter notebooks are interactive documents that combine code, text, and visualizations, commonly used for data analysis and scientific computing. The notebook_path parameter must be an absolute path, not a relative path. The cell_number is 0-indexed. Use edit_mode=insert to add a new cell at the index specified by cell_number. Use edit_mode=delete to delete the cell at the index specified by cell_number.
@@ -917,7 +883,7 @@ Important:
 - When a skill is relevant, you must invoke this tool IMMEDIATELY as your first action
 - NEVER just announce or mention a skill in your text response without actually calling this tool
 - This is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task
-- Only use skills listed in "Available skills" below
+- Skills listed below are available for invocation
 - Do not invoke a skill that is already running
 - Do not use this tool for built-in CLI commands (like /help, /clear, etc.)
 - If you see a <command-name> tag in the current conversation turn (e.g., <command-name>/commit</command-name>), the skill has ALREADY been loaded and its instructions follow in the next message. Do NOT call this tool - just follow the skill instructions directly.
@@ -1057,25 +1023,12 @@ assistant: "I'm going to use the Task tool to launch the greeting-responder agen
       "exclusiveMinimum": 0,
       "maximum": 9007199254740991
     },
-    "name": {
-      "description": "Name for the spawned agent",
-      "type": "string"
-    },
-    "team_name": {
-      "description": "Team name for spawning. Uses current team context if omitted.",
-      "type": "string"
-    },
-    "mode": {
-      "description": "Permission mode for spawned teammate (e.g., \"plan\" to require plan approval).",
-      "type": "string",
-      "enum": [
-        "acceptEdits",
-        "bypassPermissions",
-        "default",
-        "delegate",
-        "dontAsk",
-        "plan"
-      ]
+    "allowed_tools": {
+      "description": "Tools to grant this agent. User will be prompted to approve if not already allowed. Example: [\"Bash(git commit*)\", \"Read\"]",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     }
   },
   "required": [
@@ -1123,6 +1076,32 @@ assistant: "I'm going to use the Task tool to launch the greeting-responder agen
     "block",
     "timeout"
   ],
+  "additionalProperties": false
+}
+
+---
+
+## TaskStop
+
+
+- Stops a running background task by its ID
+- Takes a task_id parameter identifying the task to stop
+- Returns a success or failure status
+- Use this tool when you need to terminate a long-running task
+
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "description": "The ID of the background task to stop",
+      "type": "string"
+    },
+    "shell_id": {
+      "description": "Deprecated: use task_id instead",
+      "type": "string"
+    }
+  },
   "additionalProperties": false
 }
 

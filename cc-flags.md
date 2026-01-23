@@ -1,4 +1,4 @@
-# Claude Code Flags 2.1.17
+# Claude Code Flags 2.1.19
 
 ## Feature Gates
 
@@ -17,18 +17,18 @@ _None detected_
 
 ## Experiments
 
-- `ccr_plan_mode_enabled`
 - `enhanced_telemetry_beta`
 - `hide_overages_option_at_rate_limit_hit`
-- `preserve_thinking`
 - `prompt_cache_1h_experiment`
 - `tengu_attribution_header`
 - `tengu_bash_haiku_prefetch`
 - `tengu_brass_pebble`
+- `tengu_cache_plum_violet`
 - `tengu_chrome_auto_enable`
 - `tengu_code_diff_cli`
 - `tengu_compact_streaming_retry`
 - `tengu_file_edit_optimization`
+- `tengu_file_write_optimization`
 - `tengu_keybinding_customization`
 - `tengu_mcp_tool_search`
 - `tengu_permission_explainer`
