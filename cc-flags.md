@@ -1,4 +1,4 @@
-# Claude Code Flags 2.1.19
+# Claude Code Flags 2.1.20
 
 ## Feature Gates
 
@@ -18,26 +18,28 @@ _None detected_
 ## Experiments
 
 - `enhanced_telemetry_beta`
-- `hide_overages_option_at_rate_limit_hit`
-- `prompt_cache_1h_experiment`
 - `tengu_attribution_header`
 - `tengu_bash_haiku_prefetch`
 - `tengu_brass_pebble`
 - `tengu_cache_plum_violet`
 - `tengu_chrome_auto_enable`
 - `tengu_code_diff_cli`
+- `tengu_compact_cache_prefix`
 - `tengu_compact_streaming_retry`
-- `tengu_file_edit_optimization`
+- `tengu_cork_m4q`
 - `tengu_file_write_optimization`
-- `tengu_keybinding_customization`
+- `tengu_keybinding_customization_release`
+- `tengu_kv7_prompt_sort`
+- `tengu_marble_kite`
 - `tengu_mcp_tool_search`
 - `tengu_permission_explainer`
 - `tengu_pid_based_version_locking`
 - `tengu_plan_mode_interview_phase`
+- `tengu_plum_vx3`
+- `tengu_pr_status_cli`
 - `tengu_quartz_lantern`
 - `tengu_remote_backend`
+- `tengu_scarf_coffee`
 - `tengu_session_memory`
 - `tengu_sm_compact`
 - `tengu_tool_search_unsupported_models`
-- `tool_use_examples`
-- `trust_folder_dialog_copy`
