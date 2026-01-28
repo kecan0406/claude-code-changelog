@@ -1,10 +1,10 @@
-# Claude Code Version 2.1.20
+# Claude Code Version 2.1.21
 
-Release Date: 2026-01-27
+Release Date: 2026-01-28
 
 # User Message
 
-2026-01-27T01:32:42.624Z is the date. Write a haiku about it.
+2026-01-28T02:23:44.020Z is the date. Write a haiku about it.
 
 # System Prompt
 
@@ -131,11 +131,11 @@ assistant: Clients are marked as failed in the `connectToServer` function in src
 
 Here is useful information about the environment you are running in:
 <env>
-Working directory: /tmp/claude-history-1769477560626-ore476
+Working directory: /tmp/claude-history-1769567022204-lgm6cw
 Is directory a git repo: No
 Platform: linux
 OS Version: Linux 6.8.0-90-generic
-Today's date: 2026-01-27
+Today's date: 2026-01-28
 </env>
 You are powered by the model named Sonnet 4.5. The exact model ID is claude-sonnet-4-5-20250929.
 
@@ -727,6 +727,10 @@ A powerful search tool built on ripgrep
       "type": "number"
     },
     "-C": {
+      "description": "Alias for context.",
+      "type": "number"
+    },
+    "context": {
       "description": "Number of lines to show before and after each match (rg -C). Requires output_mode: \"content\", ignored otherwise.",
       "type": "number"
     },
@@ -1392,7 +1396,7 @@ Usage notes:
   - Web search is only available in the US
 
 IMPORTANT - Use the correct year in search queries:
-  - Today's date is 2026-01-27. You MUST use this year when searching for recent information, documentation, or current events.
+  - Today's date is 2026-01-28. You MUST use this year when searching for recent information, documentation, or current events.
   - Example: If the user asks for "latest React docs", search for "React documentation 2026", NOT "React documentation 2025"
 
 {

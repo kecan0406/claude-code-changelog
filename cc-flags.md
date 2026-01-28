@@ -1,4 +1,4 @@
-# Claude Code Flags 2.1.20
+# Claude Code Flags 2.1.21
 
 ## Feature Gates
 
@@ -26,10 +26,12 @@ _None detected_
 - `tengu_code_diff_cli`
 - `tengu_compact_cache_prefix`
 - `tengu_compact_streaming_retry`
+- `tengu_coral_fern`
 - `tengu_cork_m4q`
 - `tengu_file_write_optimization`
 - `tengu_keybinding_customization_release`
 - `tengu_kv7_prompt_sort`
+- `tengu_marble_anvil`
 - `tengu_marble_kite`
 - `tengu_mcp_tool_search`
 - `tengu_permission_explainer`
@@ -43,3 +45,4 @@ _None detected_
 - `tengu_session_memory`
 - `tengu_sm_compact`
 - `tengu_tool_search_unsupported_models`
+- `tengu_tst_kx7`
