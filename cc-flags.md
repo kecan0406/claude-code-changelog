@@ -1,4 +1,4 @@
-# Claude Code Flags 2.1.22
+# Claude Code Flags 2.1.23
 
 ## Feature Gates
 
@@ -44,5 +44,7 @@ _None detected_
 - `tengu_scarf_coffee`
 - `tengu_session_memory`
 - `tengu_sm_compact`
+- `tengu_system_prompt_global_cache`
 - `tengu_tool_search_unsupported_models`
 - `tengu_tst_kx7`
+- `tengu_workout`
