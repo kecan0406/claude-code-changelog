@@ -1,4 +1,4 @@
-# Claude Code Flags 2.1.25
+# Claude Code Flags 2.1.27
 
 ## Feature Gates
 
@@ -19,7 +19,6 @@ _None detected_
 
 - `enhanced_telemetry_beta`
 - `tengu_attribution_header`
-- `tengu_bash_haiku_prefetch`
 - `tengu_brass_pebble`
 - `tengu_cache_plum_violet`
 - `tengu_chrome_auto_enable`
@@ -40,6 +39,7 @@ _None detected_
 - `tengu_plum_vx3`
 - `tengu_pr_status_cli`
 - `tengu_quartz_lantern`
+- `tengu_quiet_fern`
 - `tengu_remote_backend`
 - `tengu_scarf_coffee`
 - `tengu_session_memory`
