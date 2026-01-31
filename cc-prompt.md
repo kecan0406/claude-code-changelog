@@ -1,6 +1,6 @@
-# Claude Code Version 2.1.27
+# Claude Code Version 2.1.28
 
-Release Date: 2026-01-30
+Release Date: 2026-01-31
 
 # User Message
 
@@ -9,7 +9,7 @@ The following skills are available for use with the Skill tool:
 
 - keybindings-help: Use when the user wants to customize keyboard shortcuts, rebind keys, add chord bindings, or modify ~/.claude/keybindings.json. Examples: "rebind ctrl+s", "add a chord shortcut", "change the submit key", "customize keybindings".
 </system-reminder>
-2026-01-30T20:37:29.516Z is the date. Write a haiku about it.
+2026-01-31T20:36:33.827Z is the date. Write a haiku about it.
 
 # System Prompt
 
@@ -137,11 +137,11 @@ assistant: Clients are marked as failed in the `connectToServer` function in src
 
 Here is useful information about the environment you are running in:
 <env>
-Working directory: /tmp/claude-history-1769805447550-wuusrm
+Working directory: /tmp/claude-history-1769891791786-7ensyt
 Is directory a git repo: No
 Platform: linux
 OS Version: Linux 6.8.0-90-generic
-Today's date: 2026-01-30
+Today's date: 2026-01-31
 </env>
 You are powered by the model named Sonnet 4.5. The exact model ID is claude-sonnet-4-5-20250929.
 
@@ -1394,7 +1394,7 @@ Usage notes:
   - Web search is only available in the US
 
 IMPORTANT - Use the correct year in search queries:
-  - Today's date is 2026-01-30. You MUST use this year when searching for recent information, documentation, or current events.
+  - Today's date is 2026-01-31. You MUST use this year when searching for recent information, documentation, or current events.
   - Example: If the user asks for "latest React docs", search for "React documentation 2026", NOT "React documentation 2025"
 
 {
