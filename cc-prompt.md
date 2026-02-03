@@ -1,6 +1,6 @@
-# Claude Code Version 2.1.29
+# Claude Code Version 2.1.30
 
-Release Date: 2026-01-31
+Release Date: 2026-02-03
 
 # User Message
 
@@ -9,7 +9,7 @@ The following skills are available for use with the Skill tool:
 
 - keybindings-help: Use when the user wants to customize keyboard shortcuts, rebind keys, add chord bindings, or modify ~/.claude/keybindings.json. Examples: "rebind ctrl+s", "add a chord shortcut", "change the submit key", "customize keybindings".
 </system-reminder>
-2026-01-31T20:36:44.230Z is the date. Write a haiku about it.
+2026-02-03T18:08:50.877Z is the date. Write a haiku about it.
 
 # System Prompt
 
@@ -137,11 +137,11 @@ assistant: Clients are marked as failed in the `connectToServer` function in src
 
 Here is useful information about the environment you are running in:
 <env>
-Working directory: /tmp/claude-history-1769891802194-36ze5t
+Working directory: /tmp/claude-history-1770142128944-kxnapv
 Is directory a git repo: No
 Platform: linux
 OS Version: Linux 6.8.0-90-generic
-Today's date: 2026-01-31
+Today's date: 2026-02-03
 </env>
 You are powered by the model named Sonnet 4.5. The exact model ID is claude-sonnet-4-5-20250929.
 
@@ -831,7 +831,7 @@ Usage:
 - Any lines longer than 2000 characters will be truncated
 - Results are returned using cat -n format, with line numbers starting at 1
 - This tool allows Claude Code to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Claude Code is a multimodal LLM.
-- This tool can read PDF files (.pdf). PDFs are processed page by page, extracting both text and visual content for analysis.
+- This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.
 - This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
 - This tool can only read files, not directories. To read a directory, use an ls command via the Bash tool.
 - You can call multiple tools in a single response. It is always better to speculatively read multiple potentially useful files in parallel.
@@ -852,6 +852,10 @@ Usage:
     "limit": {
       "description": "The number of lines to read. Only provide if the file is too large to read at once.",
       "type": "number"
+    },
+    "pages": {
+      "description": "Page range for PDF files (e.g., \"1-5\", \"3\", \"10-20\"). Only applicable to PDF files. Maximum 20 pages per request.",
+      "type": "string"
     }
   },
   "required": [
@@ -909,7 +913,7 @@ Important:
 
 ## Task
 
-Launch a new agent to handle complex, multi-step tasks autonomously. 
+Launch a new agent to handle complex, multi-step tasks autonomously.
 
 The Task tool launches specialized agents (subprocesses) that autonomously handle complex tasks. Each agent type has specific capabilities and tools available to it.
 
@@ -1394,7 +1398,7 @@ Usage notes:
   - Web search is only available in the US
 
 IMPORTANT - Use the correct year in search queries:
-  - Today's date is 2026-01-31. You MUST use this year when searching for recent information, documentation, or current events.
+  - Today's date is 2026-02-03. You MUST use this year when searching for recent information, documentation, or current events.
   - Example: If the user asks for "latest React docs", search for "React documentation 2026", NOT "React documentation 2025"
 
 {

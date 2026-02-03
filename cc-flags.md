@@ -1,4 +1,4 @@
-# Claude Code Flags 2.1.29
+# Claude Code Flags 2.1.30
 
 ## Feature Gates
 
@@ -47,4 +47,5 @@ _None detected_
 - `tengu_system_prompt_global_cache`
 - `tengu_tool_search_unsupported_models`
 - `tengu_tst_kx7`
+- `tengu_vinteuil_phrase`
 - `tengu_workout`
