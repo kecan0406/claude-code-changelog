@@ -138,7 +138,7 @@ function buildCliReplyBlocks(
   language: Language,
 ): SlackBlock[] {
   const msg = MESSAGES[language];
-  const changesText = cliChanges.map((c) => `- ${c}`).join("\n");
+  const changesText = cliChanges.map((c) => `• ${c}`).join("\n");
 
   const blocks: SlackBlock[] = [
     {
@@ -172,7 +172,7 @@ function buildPromptReplyBlocks(
   language: Language,
 ): SlackBlock[] {
   const msg = MESSAGES[language];
-  const changesText = promptChanges.map((c) => `- ${c}`).join("\n");
+  const changesText = promptChanges.map((c) => `• ${c}`).join("\n");
 
   return [
     {
