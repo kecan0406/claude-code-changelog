@@ -2,6 +2,10 @@ import { getRedis, KeyPrefix, buildKey } from "../db/redis.js";
 import { logger } from "../utils/logger.js";
 import type { ChangeSummary, Language } from "../types/index.js";
 
+const CACHE_DEFAULTS = {
+  TTL_DAYS: 7,
+} as const;
+
 const SUPPORTED_LANGUAGES: Language[] = ["en", "ko"];
 
 function summaryKey(version: string, language: Language): string {
@@ -12,13 +16,7 @@ export interface SummaryCacheOptions {
   ttlDays?: number;
 }
 
-/**
- * Summary cache using Upstash Redis only (simplified from 2-tier)
- */
 export class SummaryCache {
-  /**
-   * Get cached summary
-   */
   async get(
     version: string,
     language: Language,
@@ -41,16 +39,13 @@ export class SummaryCache {
     }
   }
 
-  /**
-   * Set cached summary with TTL
-   */
   async set(
     version: string,
     language: Language,
     summary: ChangeSummary,
     options: SummaryCacheOptions = {},
   ): Promise<void> {
-    const { ttlDays = 7 } = options;
+    const { ttlDays = CACHE_DEFAULTS.TTL_DAYS } = options;
     const key = summaryKey(version, language);
     const ttlSeconds = ttlDays * 24 * 60 * 60;
 
@@ -64,9 +59,6 @@ export class SummaryCache {
     }
   }
 
-  /**
-   * Get summaries for all languages for a version
-   */
   async getAll(version: string): Promise<Map<Language, ChangeSummary>> {
     const results = new Map<Language, ChangeSummary>();
 
@@ -75,11 +67,12 @@ export class SummaryCache {
       const keys = SUPPORTED_LANGUAGES.map((lang) => summaryKey(version, lang));
       const values = await redis.mget<(ChangeSummary | null)[]>(...keys);
 
-      values.forEach((value, index) => {
+      for (let i = 0; i < values.length; i++) {
+        const value = values[i];
         if (value) {
-          results.set(SUPPORTED_LANGUAGES[index], value);
+          results.set(SUPPORTED_LANGUAGES[i], value);
         }
-      });
+      }
     } catch (error) {
       logger.error(`Failed to get all summaries for ${version}`, error);
     }
@@ -87,17 +80,12 @@ export class SummaryCache {
     return results;
   }
 
-  /**
-   * Pre-generate and cache summaries for all languages
-   * Called when a new version is detected
-   */
   async pregenerate(
     version: string,
     generateFn: (language: Language) => Promise<ChangeSummary>,
   ): Promise<Map<Language, ChangeSummary>> {
     const results = new Map<Language, ChangeSummary>();
 
-    // Check what we already have cached
     const existing = await this.getAll(version);
     const missing: Language[] = [];
 
@@ -115,7 +103,6 @@ export class SummaryCache {
       return results;
     }
 
-    // Generate summaries for missing languages in parallel
     logger.info(`Generating summaries for ${version}: ${missing.join(", ")}`);
 
     const generatePromises = missing.map(async (lang) => {
@@ -134,17 +121,11 @@ export class SummaryCache {
     return results;
   }
 
-  /**
-   * Check if summaries exist for all supported languages
-   */
   async hasAllLanguages(version: string): Promise<boolean> {
     const existing = await this.getAll(version);
     return existing.size === SUPPORTED_LANGUAGES.length;
   }
 
-  /**
-   * Delete cached summary
-   */
   async delete(version: string, language: Language): Promise<boolean> {
     const key = summaryKey(version, language);
 
@@ -161,9 +142,6 @@ export class SummaryCache {
     }
   }
 
-  /**
-   * Check if summary exists
-   */
   async exists(version: string, language: Language): Promise<boolean> {
     const key = summaryKey(version, language);
 
@@ -177,9 +155,6 @@ export class SummaryCache {
     }
   }
 
-  /**
-   * Get list of supported languages
-   */
   getSupportedLanguages(): Language[] {
     return [...SUPPORTED_LANGUAGES];
   }

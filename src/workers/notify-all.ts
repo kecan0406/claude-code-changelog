@@ -2,6 +2,7 @@ import {
   getLatestTag,
   getChangelogDiff,
   getCliChangelog,
+  GITHUB_DEFAULTS,
 } from "../services/github.js";
 import { generateSummary } from "../services/claude.js";
 import { sendNotificationToWorkspaces } from "../services/slack.js";
@@ -31,10 +32,10 @@ function loadMultiWorkspaceConfig(): MultiWorkspaceConfig {
   }
 
   return {
-    upstreamOwner: process.env.UPSTREAM_OWNER || "marckrenn",
-    upstreamRepo: process.env.UPSTREAM_REPO || "claude-code-changelog",
-    cliRepoOwner: "anthropics",
-    cliRepoName: "claude-code",
+    upstreamOwner: process.env.UPSTREAM_OWNER || GITHUB_DEFAULTS.UPSTREAM_OWNER,
+    upstreamRepo: process.env.UPSTREAM_REPO || GITHUB_DEFAULTS.UPSTREAM_REPO,
+    cliRepoOwner: GITHUB_DEFAULTS.CLI_REPO_OWNER,
+    cliRepoName: GITHUB_DEFAULTS.CLI_REPO_NAME,
     anthropicApiKey,
   };
 }
@@ -151,12 +152,19 @@ export async function runMultiWorkspaceNotification(): Promise<void> {
     cliResult.changes,
   );
 
+  // Validate that at least English summary exists for the placeholder
+  const placeholderSummary = summariesByLanguage.get("en");
+  if (!placeholderSummary) {
+    logger.error("Failed to generate English summary, cannot proceed");
+    return;
+  }
+
   // Send notifications to all workspaces
   const results = await sendNotificationToWorkspaces(
     workspaces,
     {
       version: latestTag.name,
-      summary: summariesByLanguage.get("en")!, // placeholder, will be replaced per workspace
+      summary: placeholderSummary,
       compareUrl: diff.compareUrl,
       cliCompareUrl: cliResult.compareUrl,
     },

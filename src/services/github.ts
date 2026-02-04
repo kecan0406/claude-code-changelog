@@ -4,6 +4,27 @@ import { logger } from "../utils/logger.js";
 
 const TARGET_FILES = ["cc-prompt.md", "cc-flags.md"];
 
+export const GITHUB_DEFAULTS = {
+  UPSTREAM_OWNER: "marckrenn",
+  UPSTREAM_REPO: "claude-code-changelog",
+  CLI_REPO_OWNER: "anthropics",
+  CLI_REPO_NAME: "claude-code",
+} as const;
+
+let octokitClient: Octokit | null = null;
+
+function getOctokit(): Octokit {
+  if (!octokitClient) {
+    octokitClient = new Octokit();
+  }
+  return octokitClient;
+}
+
+/** @internal */
+export function _resetOctokitClient(): void {
+  octokitClient = null;
+}
+
 export interface GitHubConfig {
   upstreamOwner: string;
   upstreamRepo: string;
@@ -14,7 +35,7 @@ export interface GitHubConfig {
 export async function getLatestTag(
   config: Pick<GitHubConfig, "upstreamOwner" | "upstreamRepo">,
 ): Promise<TagInfo | null> {
-  const octokit = new Octokit();
+  const octokit = getOctokit();
 
   try {
     const { data: tags } = await octokit.repos.listTags({
@@ -52,7 +73,7 @@ export async function getChangelogDiff(
   fromVersion: string,
   toVersion: string,
 ): Promise<ChangelogDiff> {
-  const octokit = new Octokit();
+  const octokit = getOctokit();
 
   try {
     const { data: comparison } = await octokit.repos.compareCommits({
@@ -94,7 +115,7 @@ export async function getFileContent(
   version: string,
   filename: string,
 ): Promise<string> {
-  const octokit = new Octokit();
+  const octokit = getOctokit();
 
   try {
     const { data } = await octokit.repos.getContent({
@@ -124,7 +145,7 @@ export async function getCliChangelog(
   config: Pick<GitHubConfig, "cliRepoOwner" | "cliRepoName">,
   version: string,
 ): Promise<CliChangelogResult> {
-  const octokit = new Octokit();
+  const octokit = getOctokit();
 
   try {
     logger.info(`Fetching CLI changelog for version ${version}`);
@@ -170,7 +191,7 @@ function parseChangelogSection(content: string, version: string): string[] {
   const startIndex = (match.index ?? 0) + match[0].length;
   const nextSectionMatch = content.slice(startIndex).match(/^## \[?\d+\.\d+/m);
   const endIndex = nextSectionMatch
-    ? startIndex + nextSectionMatch.index!
+    ? startIndex + (nextSectionMatch.index ?? 0)
     : content.length;
 
   const sectionContent = content.slice(startIndex, endIndex);

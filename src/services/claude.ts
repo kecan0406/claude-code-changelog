@@ -2,6 +2,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ChangelogDiff, ChangeSummary, Language } from "../types/index.js";
 import { logger } from "../utils/logger.js";
 
+const CLAUDE_CONFIG = {
+  MODEL: "claude-haiku-4-5",
+  MAX_TOKENS: 2048,
+} as const;
+
 type ParsedSummary = Omit<ChangeSummary, "version">;
 
 interface ToolDescriptions {
@@ -219,8 +224,8 @@ export async function generateSummary(
     logger.info(`Generating summary with Claude API (language: ${language})`);
 
     const response = await client.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 2048,
+      model: CLAUDE_CONFIG.MODEL,
+      max_tokens: CLAUDE_CONFIG.MAX_TOKENS,
       messages: [{ role: "user", content: prompt }],
       tools: [createSummaryTool(language)],
       tool_choice: { type: "tool", name: "submit_changelog_summary" },

@@ -1,7 +1,14 @@
 import { WebClient, type ChatPostMessageResponse } from "@slack/web-api";
+import type {
+  KnownBlock,
+  SectionBlock,
+  ContextBlock,
+  MrkdwnElement,
+} from "@slack/types";
 import type { SlackMessage, ChangeSummary, Language } from "../types/index.js";
 import type { Workspace } from "../types/database.js";
 import { logger } from "../utils/logger.js";
+import { GITHUB_DEFAULTS } from "./github.js";
 
 interface MessageStrings {
   released: string;
@@ -49,22 +56,47 @@ const MESSAGES: Record<Language, MessageStrings> = {
   },
 };
 
-interface SlackBlock {
-  type: string;
-  text?: {
-    type: string;
-    text: string;
-  };
-  elements?: Array<{
-    type: string;
-    text: string;
-  }>;
+const REPO_PATHS = {
+  CLI: `${GITHUB_DEFAULTS.CLI_REPO_OWNER}/${GITHUB_DEFAULTS.CLI_REPO_NAME}`,
+  CHANGELOG: `${GITHUB_DEFAULTS.UPSTREAM_OWNER}/${GITHUB_DEFAULTS.UPSTREAM_REPO}`,
+} as const;
+
+interface ReplyBlockConfig {
+  title: string;
+  content: string;
+  compareUrl: string;
+  repoPath: string;
+  language: Language;
+}
+
+function buildReplyBlocks(config: ReplyBlockConfig): KnownBlock[] {
+  const msg = MESSAGES[config.language];
+  const blocks: KnownBlock[] = [
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: `*${config.title}:*\n${config.content}` },
+    } satisfies SectionBlock,
+  ];
+
+  if (config.compareUrl) {
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `${msg.viewDiff}: <${config.compareUrl}|${config.repoPath}>`,
+        } satisfies MrkdwnElement,
+      ],
+    } satisfies ContextBlock);
+  }
+
+  return blocks;
 }
 
 async function postMessage(
   client: WebClient,
   channelId: string,
-  blocks: SlackBlock[],
+  blocks: KnownBlock[],
   threadTs?: string,
 ): Promise<ChatPostMessageResponse> {
   const textFallback = extractTextFromBlocks(blocks);
@@ -77,7 +109,7 @@ async function postMessage(
   });
 }
 
-function extractTextFromBlocks(blocks: SlackBlock[]): string {
+function extractTextFromBlocks(blocks: KnownBlock[]): string {
   for (const block of blocks) {
     if (block.type === "header" && block.text) {
       return block.text.text;
@@ -93,7 +125,7 @@ function buildMainMessageBlocks(
   version: string,
   summary: ChangeSummary,
   language: Language,
-): SlackBlock[] {
+): KnownBlock[] {
   const msg = MESSAGES[language];
 
   const cliCount = summary.cliChanges.length;
@@ -128,7 +160,7 @@ function buildMainMessageBlocks(
         type: "mrkdwn",
         text: `${mainText}\n${bodyText}`,
       },
-    },
+    } satisfies SectionBlock,
   ];
 }
 
@@ -137,33 +169,15 @@ function buildCliReplyBlocks(
   cliChanges: string[],
   compareUrl: string,
   language: Language,
-): SlackBlock[] {
+): KnownBlock[] {
   const msg = MESSAGES[language];
-  const changesText = cliChanges.map((c) => `• ${c}`).join("\n");
-
-  const blocks: SlackBlock[] = [
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `*Claude Code CLI ${version} ${msg.changelog}:*\n${changesText}`,
-      },
-    },
-  ];
-
-  if (compareUrl) {
-    blocks.push({
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: `${msg.viewDiff}: <${compareUrl}|anthropics/claude-code>`,
-        },
-      ],
-    });
-  }
-
-  return blocks;
+  return buildReplyBlocks({
+    title: `Claude Code CLI ${version} ${msg.changelog}`,
+    content: cliChanges.map((c) => `• ${c}`).join("\n"),
+    compareUrl,
+    repoPath: REPO_PATHS.CLI,
+    language,
+  });
 }
 
 function buildPromptReplyBlocks(
@@ -171,28 +185,15 @@ function buildPromptReplyBlocks(
   promptChanges: string[],
   compareUrl: string,
   language: Language,
-): SlackBlock[] {
+): KnownBlock[] {
   const msg = MESSAGES[language];
-  const changesText = promptChanges.map((c) => `• ${c}`).join("\n");
-
-  return [
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `*Claude Code ${version} ${msg.promptChanges} ${msg.changes}:*\n${changesText}`,
-      },
-    },
-    {
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: `${msg.viewDiff}: <${compareUrl}|marckrenn/claude-code-changelog>`,
-        },
-      ],
-    },
-  ];
+  return buildReplyBlocks({
+    title: `Claude Code ${version} ${msg.promptChanges} ${msg.changes}`,
+    content: promptChanges.map((c) => `• ${c}`).join("\n"),
+    compareUrl,
+    repoPath: REPO_PATHS.CHANGELOG,
+    language,
+  });
 }
 
 function buildFlagReplyBlocks(
@@ -200,7 +201,7 @@ function buildFlagReplyBlocks(
   flagChanges: ChangeSummary["flagChanges"],
   compareUrl: string,
   language: Language,
-): SlackBlock[] {
+): KnownBlock[] {
   const msg = MESSAGES[language];
   const lines: string[] = [];
 
@@ -214,24 +215,13 @@ function buildFlagReplyBlocks(
     lines.push(`*${msg.modified}:* ${flagChanges.modified.join(", ")}`);
   }
 
-  return [
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `*Claude Code ${version} ${msg.flagChanges} ${msg.changes}:*\n${lines.join("\n")}`,
-      },
-    },
-    {
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: `${msg.viewDiff}: <${compareUrl}|marckrenn/claude-code-changelog>`,
-        },
-      ],
-    },
-  ];
+  return buildReplyBlocks({
+    title: `Claude Code ${version} ${msg.flagChanges} ${msg.changes}`,
+    content: lines.join("\n"),
+    compareUrl,
+    repoPath: REPO_PATHS.CHANGELOG,
+    language,
+  });
 }
 
 export async function sendWorkspaceNotification(

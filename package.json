@@ -17,6 +17,7 @@
     "dotenv": "^17.2.3"
   },
   "devDependencies": {
+    "@slack/types": "^2.19.0",
     "@types/node": "^22.0.0",
     "@vercel/node": "^5.0.0",
     "tsx": "^4.19.0",
