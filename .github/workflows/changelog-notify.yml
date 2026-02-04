@@ -1,0 +1,55 @@
+name: Changelog Notification
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: changelog-notification
+  cancel-in-progress: false
+
+jobs:
+  check-and-notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore last checked version
+        id: restore-version
+        uses: actions/cache@v4
+        with:
+          path: .last-checked-version
+          key: last-checked-version
+
+      - name: Run changelog notification
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+        run: npm run notify
+
+      - name: Commit version file if changed
+        run: |
+          if [ -f .last-checked-version ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add .last-checked-version
+            git diff --staged --quiet || git commit -m "chore: update last checked version"
+            git push
+          fi

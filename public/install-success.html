@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Installation Successful</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .card {
+      background: white;
+      padding: 2rem 3rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      text-align: center;
+      max-width: 400px;
+    }
+    .icon {
+      font-size: 4rem;
+      margin-bottom: 1rem;
+    }
+    h1 {
+      color: #333;
+      margin: 0 0 0.5rem;
+    }
+    p {
+      color: #666;
+      line-height: 1.6;
+    }
+    .team-name {
+      font-weight: 600;
+      color: #764ba2;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">&#10003;</div>
+    <h1 id="title">Installation Successful!</h1>
+    <p id="message">Claude Code Changelog Bot has been installed to your workspace.</p>
+    <p id="team-info"></p>
+  </div>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const team = params.get('team');
+    const lang = params.get('lang');
+
+    if (team) {
+      document.getElementById('team-info').innerHTML =
+        'Workspace: <span class="team-name">' + team + '</span>';
+    }
+
+    if (lang === 'ko') {
+      document.getElementById('title').textContent = '설치 완료!';
+      document.getElementById('message').textContent =
+        'Claude Code Changelog Bot이 워크스페이스에 설치되었습니다.';
+    }
+  </script>
+</body>
+</html>
