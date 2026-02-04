@@ -110,7 +110,12 @@ Analyze the changes and provide a summary in English.
 - Explain technical content in a developer-friendly way
 - Leave empty arrays for categories with no changes
 - Include CLI changes in the cliChanges field as-is
-- Use the submit_changelog_summary tool to submit results`,
+- Use the submit_changelog_summary tool to submit results
+
+## CRITICAL - What counts as a prompt change:
+promptChanges = changes to instructions, rules, or behavioral definitions given to Claude.
+EXCLUDE "extraction-time context" that changes every release (version numbers, dates, timestamps, paths, working directories).
+Only include changes that would make Claude behave differently.`,
   },
   ko: {
     system: `당신은 Claude Code의 변경 사항을 분석하는 전문가입니다.
@@ -129,7 +134,12 @@ Analyze the changes and provide a summary in English.
 - 변경 사항이 없는 카테고리는 빈 배열로 남겨주세요
 - CLI 변경 사항은 한국어로 번역하여 cliChanges 필드에 포함해주세요
 - 기술 용어(함수명, 파일명, 설정값 등)는 영어로 유지해주세요
-- submit_changelog_summary 도구를 사용하여 결과를 제출해주세요`,
+- submit_changelog_summary 도구를 사용하여 결과를 제출해주세요
+
+## 중요 - 프롬프트 변경의 기준:
+promptChanges = Claude에게 주어지는 지시, 규칙, 동작 정의의 변경.
+매 릴리즈마다 바뀌는 "추출 시점 컨텍스트"는 제외 (버전, 날짜, 타임스탬프, 경로, working directory).
+Claude의 동작이 달라지는 변경만 포함해주세요.`,
   },
 };
 
