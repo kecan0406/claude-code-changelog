@@ -124,11 +124,11 @@ export async function createWorkspace(
       updatedAt: now,
     };
 
-    // Store workspace data (no TTL - permanent)
-    await redis.set(key, data);
-
-    // Add to active set
-    await redis.sadd(KeyPrefix.WORKSPACES_ACTIVE, input.teamId);
+    // Use pipeline for atomic execution of set + sadd
+    const pipeline = redis.pipeline();
+    pipeline.set(key, data);
+    pipeline.sadd(KeyPrefix.WORKSPACES_ACTIVE, input.teamId);
+    await pipeline.exec();
 
     logger.info(`Workspace created/updated for team ${input.teamId}`);
     return dataToWorkspace(data);
@@ -165,14 +165,18 @@ export async function updateWorkspace(
       updatedAt: new Date().toISOString(),
     };
 
-    await redis.set(key, updated);
+    // Use pipeline for atomic execution
+    const pipeline = redis.pipeline();
+    pipeline.set(key, updated);
 
     // Update active set membership
     if (input.isActive === true) {
-      await redis.sadd(KeyPrefix.WORKSPACES_ACTIVE, teamId);
+      pipeline.sadd(KeyPrefix.WORKSPACES_ACTIVE, teamId);
     } else if (input.isActive === false) {
-      await redis.srem(KeyPrefix.WORKSPACES_ACTIVE, teamId);
+      pipeline.srem(KeyPrefix.WORKSPACES_ACTIVE, teamId);
     }
+
+    await pipeline.exec();
 
     logger.info(`Workspace updated for team ${teamId}`);
     return dataToWorkspace(updated);
@@ -199,8 +203,11 @@ export async function deactivateWorkspace(teamId: string): Promise<boolean> {
       updatedAt: new Date().toISOString(),
     };
 
-    await redis.set(key, updated);
-    await redis.srem(KeyPrefix.WORKSPACES_ACTIVE, teamId);
+    // Use pipeline for atomic execution
+    const pipeline = redis.pipeline();
+    pipeline.set(key, updated);
+    pipeline.srem(KeyPrefix.WORKSPACES_ACTIVE, teamId);
+    await pipeline.exec();
 
     logger.info(`Workspace deactivated for team ${teamId}`);
     return true;

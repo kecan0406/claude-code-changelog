@@ -9,6 +9,43 @@ import type { SlackMessage, ChangeSummary, Language } from "../types/index.js";
 import type { Workspace } from "../types/database.js";
 import { logger } from "../utils/logger.js";
 import { GITHUB_DEFAULTS } from "./github.js";
+import { withRetry } from "../utils/retry.js";
+import { deactivateWorkspace } from "../db/workspaces.js";
+
+// Slack error codes that indicate invalid/revoked tokens
+const TOKEN_INVALID_ERRORS = [
+  "invalid_auth",
+  "token_revoked",
+  "account_inactive",
+  "token_expired",
+  "not_authed",
+  "missing_scope",
+] as const;
+
+/**
+ * Check if an error indicates the bot token is invalid/revoked
+ */
+function isTokenInvalidError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return TOKEN_INVALID_ERRORS.some((code) => message.includes(code));
+  }
+
+  // Check for Slack API error format
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "data" in error &&
+    typeof (error as { data: unknown }).data === "object"
+  ) {
+    const data = (error as { data: { error?: string } }).data;
+    if (typeof data?.error === "string") {
+      return TOKEN_INVALID_ERRORS.some((code) => data.error === code);
+    }
+  }
+
+  return false;
+}
 
 interface MessageStrings {
   released: string;
@@ -61,6 +98,13 @@ const REPO_PATHS = {
   CHANGELOG: `${GITHUB_DEFAULTS.UPSTREAM_OWNER}/${GITHUB_DEFAULTS.UPSTREAM_REPO}`,
 } as const;
 
+// Delay between messages to respect Slack rate limits (1 msg/sec/channel for Tier 1)
+const MESSAGE_DELAY_MS = 1100;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 interface ReplyBlockConfig {
   title: string;
   content: string;
@@ -101,12 +145,16 @@ async function postMessage(
 ): Promise<ChatPostMessageResponse> {
   const textFallback = extractTextFromBlocks(blocks);
 
-  return client.chat.postMessage({
-    channel: channelId,
-    blocks,
-    text: textFallback,
-    thread_ts: threadTs,
-  });
+  return withRetry(
+    () =>
+      client.chat.postMessage({
+        channel: channelId,
+        blocks,
+        text: textFallback,
+        thread_ts: threadTs,
+      }),
+    { maxAttempts: 3, baseDelayMs: 1000 },
+  );
 }
 
 function extractTextFromBlocks(blocks: KnownBlock[]): string {
@@ -252,7 +300,9 @@ export async function sendWorkspaceNotification(
     }
     const threadTs = mainResult.ts;
 
+    // Send thread replies with rate limit delay
     if (message.summary.cliChanges.length > 0) {
+      await delay(MESSAGE_DELAY_MS);
       const cliBlocks = buildCliReplyBlocks(
         message.version,
         message.summary.cliChanges,
@@ -268,6 +318,7 @@ export async function sendWorkspaceNotification(
       message.summary.flagChanges.modified.length > 0;
 
     if (hasFlags) {
+      await delay(MESSAGE_DELAY_MS);
       const flagBlocks = buildFlagReplyBlocks(
         message.version,
         message.summary.flagChanges,
@@ -278,6 +329,7 @@ export async function sendWorkspaceNotification(
     }
 
     if (message.summary.promptChanges.length > 0) {
+      await delay(MESSAGE_DELAY_MS);
       const promptBlocks = buildPromptReplyBlocks(
         message.version,
         message.summary.promptChanges,
@@ -289,6 +341,21 @@ export async function sendWorkspaceNotification(
 
     logger.info(`Notification sent to workspace ${workspace.teamName}`);
   } catch (error) {
+    // Auto-deactivate workspace if token is invalid
+    if (isTokenInvalidError(error)) {
+      logger.warn(
+        `Token invalid for workspace ${workspace.teamName}, deactivating`,
+      );
+      try {
+        await deactivateWorkspace(workspace.teamId);
+      } catch (deactivateError) {
+        logger.error(
+          `Failed to deactivate workspace ${workspace.teamId}`,
+          deactivateError,
+        );
+      }
+    }
+
     logger.error(
       `Failed to send notification to workspace ${workspace.teamName}`,
       error,
@@ -345,26 +412,46 @@ export interface NotificationResult {
   error?: Error;
 }
 
+const CONCURRENCY_LIMIT = 10;
+
+/**
+ * Process items in batches with concurrency limit
+ */
+async function processInBatches<T, R>(
+  items: T[],
+  processor: (item: T) => Promise<R>,
+  concurrency: number,
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = [];
+
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency);
+    const batchResults = await Promise.allSettled(batch.map(processor));
+    results.push(...batchResults);
+  }
+
+  return results;
+}
+
 export async function sendNotificationToWorkspaces(
   workspaces: Workspace[],
   message: SlackMessage,
   summariesByLanguage: Map<Language, ChangeSummary>,
 ): Promise<NotificationResult[]> {
-  const results: NotificationResult[] = [];
-
-  for (const workspace of workspaces) {
+  const processor = async (
+    workspace: Workspace,
+  ): Promise<NotificationResult> => {
     const summary = summariesByLanguage.get(workspace.language);
 
     if (!summary) {
       logger.warn(
         `No summary available for ${workspace.language}, skipping workspace ${workspace.teamName}`,
       );
-      results.push({
+      return {
         workspace,
         success: false,
         error: new Error(`No summary for language: ${workspace.language}`),
-      });
-      continue;
+      };
     }
 
     try {
@@ -374,16 +461,33 @@ export async function sendNotificationToWorkspaces(
       };
 
       await sendWorkspaceNotification(workspace, workspaceMessage);
-      results.push({ workspace, success: true });
+      return { workspace, success: true };
     } catch (error) {
       logger.error(`Failed to notify workspace ${workspace.teamName}`, error);
-      results.push({
+      return {
         workspace,
         success: false,
         error: error instanceof Error ? error : new Error(String(error)),
-      });
+      };
     }
-  }
+  };
 
-  return results;
+  const settledResults = await processInBatches(
+    workspaces,
+    processor,
+    CONCURRENCY_LIMIT,
+  );
+
+  // Extract values from settled results (processor never throws)
+  return settledResults.map((result) => {
+    if (result.status === "fulfilled") {
+      return result.value;
+    }
+    // This should never happen since processor catches all errors
+    return {
+      workspace: { teamId: "unknown", teamName: "unknown" } as Workspace,
+      success: false,
+      error: result.reason instanceof Error ? result.reason : new Error(String(result.reason)),
+    };
+  });
 }

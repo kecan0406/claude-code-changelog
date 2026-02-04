@@ -1,4 +1,11 @@
-export { getRedis, testConnection, KeyPrefix, buildKey } from "./redis.js";
+export {
+  getRedis,
+  testConnection,
+  KeyPrefix,
+  buildKey,
+  acquireLock,
+  releaseLock,
+} from "./redis.js";
 
 export {
   getActiveWorkspaces,
@@ -21,4 +28,9 @@ export {
   setLastCheckedVersion,
   getLastNotificationTime,
   setLastNotificationTime,
+  addFailedWorkspace,
+  getFailedWorkspaces,
+  removeFailedWorkspace,
 } from "./state.js";
+
+export type { FailedNotification } from "./state.js";

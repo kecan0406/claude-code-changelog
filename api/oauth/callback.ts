@@ -3,6 +3,7 @@ import { WebClient } from "@slack/web-api";
 import { createWorkspace } from "../../src/db/workspaces.js";
 import { sendWelcomeMessage } from "../../src/services/slack.js";
 import type { Language } from "../../src/types/index.js";
+import { logger } from "../../src/utils/logger.js";
 
 const SLACK_OAUTH_ACCESS_URL = "https://slack.com/api/oauth.v2.access";
 
@@ -41,7 +42,7 @@ export default async function handler(
 
   // Handle OAuth errors
   if (error) {
-    console.error("OAuth error:", error);
+    logger.error("OAuth error", { error: String(error) });
     res.redirect(`/install-error?error=${encodeURIComponent(String(error))}`);
     return;
   }
@@ -56,7 +57,7 @@ export default async function handler(
   const clientSecret = process.env.SLACK_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    console.error("Missing SLACK_CLIENT_ID or SLACK_CLIENT_SECRET");
+    logger.error("Missing SLACK_CLIENT_ID or SLACK_CLIENT_SECRET");
     res.redirect("/install-error?error=server_configuration");
     return;
   }
@@ -93,10 +94,22 @@ export default async function handler(
       }),
     });
 
+    // Validate HTTP status code before parsing JSON
+    if (!tokenResponse.ok) {
+      logger.error("OAuth token request failed", {
+        status: tokenResponse.status,
+        statusText: tokenResponse.statusText,
+      });
+      res.redirect(
+        `/install-error?error=oauth_request_failed&status=${tokenResponse.status}`,
+      );
+      return;
+    }
+
     const tokenData = (await tokenResponse.json()) as SlackOAuthResponse;
 
     if (!tokenData.ok) {
-      console.error("Slack OAuth failed:", tokenData.error);
+      logger.error("Slack OAuth failed", { error: tokenData.error });
       res.redirect(
         `/install-error?error=${encodeURIComponent(tokenData.error || "unknown")}`,
       );
@@ -105,7 +118,7 @@ export default async function handler(
 
     // Validate required fields
     if (!tokenData.access_token || !tokenData.team) {
-      console.error("Missing required fields in OAuth response");
+      logger.error("Missing required fields in OAuth response");
       res.redirect("/install-error?error=invalid_response");
       return;
     }
@@ -134,12 +147,12 @@ export default async function handler(
 
         channelId = generalChannel?.id || firstJoinedChannel?.id;
       } catch (err) {
-        console.error("Failed to list channels:", err);
+        logger.error("Failed to list channels", err);
       }
     }
 
     if (!channelId) {
-      console.error("Could not determine channel to post to");
+      logger.error("Could not determine channel to post to");
       res.redirect("/install-error?error=no_channel");
       return;
     }
@@ -153,7 +166,7 @@ export default async function handler(
       language,
     });
 
-    console.log(
+    logger.info(
       `Workspace installed: ${workspace.teamName} (${workspace.teamId})`,
     );
 
@@ -161,7 +174,7 @@ export default async function handler(
     try {
       await sendWelcomeMessage(workspace);
     } catch (err) {
-      console.error("Failed to send welcome message:", err);
+      logger.error("Failed to send welcome message", err);
       // Don't fail the installation if welcome message fails
     }
 
@@ -173,7 +186,7 @@ export default async function handler(
 
     res.redirect(`/install-success?${successParams.toString()}`);
   } catch (err) {
-    console.error("OAuth callback error:", err);
+    logger.error("OAuth callback error", err);
     res.redirect("/install-error?error=internal_error");
   }
 }

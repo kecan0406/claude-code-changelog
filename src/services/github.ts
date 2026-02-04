@@ -1,6 +1,7 @@
 import { Octokit } from "@octokit/rest";
 import type { TagInfo, ChangelogDiff, FileDiff } from "../types/index.js";
 import { logger } from "../utils/logger.js";
+import { withRetry } from "../utils/retry.js";
 
 const TARGET_FILES = ["cc-prompt.md", "cc-flags.md"];
 
@@ -15,7 +16,9 @@ let octokitClient: Octokit | null = null;
 
 function getOctokit(): Octokit {
   if (!octokitClient) {
-    octokitClient = new Octokit();
+    // Use GitHub token if available (increases rate limit from 60/hr to 5000/hr)
+    const auth = process.env.GITHUB_TOKEN;
+    octokitClient = auth ? new Octokit({ auth }) : new Octokit();
   }
   return octokitClient;
 }
@@ -37,35 +40,37 @@ export async function getLatestTag(
 ): Promise<TagInfo | null> {
   const octokit = getOctokit();
 
-  try {
-    const { data: tags } = await octokit.repos.listTags({
-      owner: config.upstreamOwner,
-      repo: config.upstreamRepo,
-      per_page: 1,
-    });
+  return withRetry(async () => {
+    try {
+      const { data: tags } = await octokit.repos.listTags({
+        owner: config.upstreamOwner,
+        repo: config.upstreamRepo,
+        per_page: 1,
+      });
 
-    if (tags.length === 0) {
-      logger.warn("No tags found in repository");
-      return null;
+      if (tags.length === 0) {
+        logger.warn("No tags found in repository");
+        return null;
+      }
+
+      const tag = tags[0];
+
+      const { data: commit } = await octokit.repos.getCommit({
+        owner: config.upstreamOwner,
+        repo: config.upstreamRepo,
+        ref: tag.commit.sha,
+      });
+
+      return {
+        name: tag.name,
+        commitSha: tag.commit.sha,
+        date: commit.commit.committer?.date || new Date().toISOString(),
+      };
+    } catch (error) {
+      logger.error("Failed to fetch latest tag", error);
+      throw error;
     }
-
-    const tag = tags[0];
-
-    const { data: commit } = await octokit.repos.getCommit({
-      owner: config.upstreamOwner,
-      repo: config.upstreamRepo,
-      ref: tag.commit.sha,
-    });
-
-    return {
-      name: tag.name,
-      commitSha: tag.commit.sha,
-      date: commit.commit.committer?.date || new Date().toISOString(),
-    };
-  } catch (error) {
-    logger.error("Failed to fetch latest tag", error);
-    throw error;
-  }
+  });
 }
 
 export async function getChangelogDiff(
@@ -75,39 +80,41 @@ export async function getChangelogDiff(
 ): Promise<ChangelogDiff> {
   const octokit = getOctokit();
 
-  try {
-    const { data: comparison } = await octokit.repos.compareCommits({
-      owner: config.upstreamOwner,
-      repo: config.upstreamRepo,
-      base: fromVersion,
-      head: toVersion,
-    });
+  return withRetry(async () => {
+    try {
+      const { data: comparison } = await octokit.repos.compareCommits({
+        owner: config.upstreamOwner,
+        repo: config.upstreamRepo,
+        base: fromVersion,
+        head: toVersion,
+      });
 
-    const relevantFiles = (comparison.files || [])
-      .filter((file) => TARGET_FILES.includes(file.filename))
-      .map(
-        (file): FileDiff => ({
-          filename: file.filename,
-          patch: file.patch || "",
-          additions: file.additions ?? 0,
-          deletions: file.deletions ?? 0,
-        }),
-      );
+      const relevantFiles = (comparison.files || [])
+        .filter((file) => TARGET_FILES.includes(file.filename))
+        .map(
+          (file): FileDiff => ({
+            filename: file.filename,
+            patch: file.patch || "",
+            additions: file.additions ?? 0,
+            deletions: file.deletions ?? 0,
+          }),
+        );
 
-    const compareUrl = `https://github.com/${config.upstreamOwner}/${config.upstreamRepo}/compare/${fromVersion}...${toVersion}`;
+      const compareUrl = `https://github.com/${config.upstreamOwner}/${config.upstreamRepo}/compare/${fromVersion}...${toVersion}`;
 
-    logger.info(`Found ${relevantFiles.length} relevant file changes`);
+      logger.info(`Found ${relevantFiles.length} relevant file changes`);
 
-    return {
-      fromVersion,
-      toVersion,
-      files: relevantFiles,
-      compareUrl,
-    };
-  } catch (error) {
-    logger.error("Failed to fetch changelog diff", error);
-    throw error;
-  }
+      return {
+        fromVersion,
+        toVersion,
+        files: relevantFiles,
+        compareUrl,
+      };
+    } catch (error) {
+      logger.error("Failed to fetch changelog diff", error);
+      throw error;
+    }
+  });
 }
 
 export async function getFileContent(
@@ -148,27 +155,29 @@ export async function getCliChangelog(
   const octokit = getOctokit();
 
   try {
-    logger.info(`Fetching CLI changelog for version ${version}`);
+    return await withRetry(async () => {
+      logger.info(`Fetching CLI changelog for version ${version}`);
 
-    const { data } = await octokit.repos.getContent({
-      owner: config.cliRepoOwner,
-      repo: config.cliRepoName,
-      path: "CHANGELOG.md",
-      ref: "main",
+      const { data } = await octokit.repos.getContent({
+        owner: config.cliRepoOwner,
+        repo: config.cliRepoName,
+        path: "CHANGELOG.md",
+        ref: "main",
+      });
+
+      if (!("content" in data) || data.encoding !== "base64") {
+        throw new Error("Unexpected response format for CHANGELOG.md");
+      }
+
+      const content = Buffer.from(data.content, "base64").toString("utf-8");
+      const changes = parseChangelogSection(content, version);
+
+      const compareUrl = `https://github.com/${config.cliRepoOwner}/${config.cliRepoName}/releases/tag/${version}`;
+
+      logger.info(`Found ${changes.length} CLI changes for ${version}`);
+
+      return { changes, compareUrl };
     });
-
-    if (!("content" in data) || data.encoding !== "base64") {
-      throw new Error("Unexpected response format for CHANGELOG.md");
-    }
-
-    const content = Buffer.from(data.content, "base64").toString("utf-8");
-    const changes = parseChangelogSection(content, version);
-
-    const compareUrl = `https://github.com/${config.cliRepoOwner}/${config.cliRepoName}/releases/tag/${version}`;
-
-    logger.info(`Found ${changes.length} CLI changes for ${version}`);
-
-    return { changes, compareUrl };
   } catch (error) {
     logger.warn(`Failed to fetch CLI changelog for ${version}`, error);
     return { changes: [], compareUrl: "" };

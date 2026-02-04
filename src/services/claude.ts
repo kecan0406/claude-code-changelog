@@ -6,10 +6,12 @@ import type {
   Language,
 } from "../types/index.js";
 import { logger } from "../utils/logger.js";
+import { withRetry } from "../utils/retry.js";
 
 const CLAUDE_CONFIG = {
   MODEL: "claude-haiku-4-5",
   MAX_TOKENS: 2048,
+  TIMEOUT_MS: 60_000, // 60 seconds
 } as const;
 
 type ParsedSummary = Omit<ChangeSummary, "version">;
@@ -281,7 +283,10 @@ export async function generateSummary(
   diff: ChangelogDiff,
   cliChanges: string[] = [],
 ): Promise<ChangeSummary> {
-  const client = new Anthropic({ apiKey });
+  const client = new Anthropic({
+    apiKey,
+    timeout: CLAUDE_CONFIG.TIMEOUT_MS,
+  });
 
   // XML format
   const diffContent = formatDiffAsXml(diff.files);
@@ -298,14 +303,18 @@ export async function generateSummary(
   try {
     logger.info(`Generating summary with Claude API (language: ${language})`);
 
-    const response = await client.messages.create({
-      model: CLAUDE_CONFIG.MODEL,
-      max_tokens: CLAUDE_CONFIG.MAX_TOKENS,
-      system: template.system,
-      messages: [{ role: "user", content: userMessage }],
-      tools: [createSummaryTool(language)],
-      tool_choice: { type: "tool", name: "submit_changelog_summary" },
-    });
+    const response = await withRetry(
+      () =>
+        client.messages.create({
+          model: CLAUDE_CONFIG.MODEL,
+          max_tokens: CLAUDE_CONFIG.MAX_TOKENS,
+          system: template.system,
+          messages: [{ role: "user", content: userMessage }],
+          tools: [createSummaryTool(language)],
+          tool_choice: { type: "tool", name: "submit_changelog_summary" },
+        }),
+      { maxAttempts: 3, baseDelayMs: 2000 },
+    );
 
     const toolUse = response.content.find(
       (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
