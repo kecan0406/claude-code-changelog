@@ -1,5 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { ChangelogDiff, ChangeSummary, Language } from "../types/index.js";
+import type {
+  ChangelogDiff,
+  ChangeSummary,
+  FileDiff,
+  Language,
+} from "../types/index.js";
 import { logger } from "../utils/logger.js";
 
 const CLAUDE_CONFIG = {
@@ -8,6 +13,49 @@ const CLAUDE_CONFIG = {
 } as const;
 
 type ParsedSummary = Omit<ChangeSummary, "version">;
+
+// XML attribute escape
+function escapeXmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+// Template variable interpolation (global flag)
+function interpolateTemplate(
+  template: string,
+  vars: {
+    fromVersion: string;
+    toVersion: string;
+    diffContent: string;
+    cliChanges: string;
+  },
+): string {
+  return template
+    .replace(/{fromVersion}/g, vars.fromVersion)
+    .replace(/{toVersion}/g, vars.toVersion)
+    .replace(/{diffContent}/g, vars.diffContent)
+    .replace(/{cliChanges}/g, vars.cliChanges);
+}
+
+// Format diff as XML
+function formatDiffAsXml(files: FileDiff[]): string {
+  if (files.length === 0) return "<no-changes />";
+  return files
+    .map(
+      (f) =>
+        `<file name="${escapeXmlAttribute(f.filename)}">\n${f.patch}\n</file>`,
+    )
+    .join("\n");
+}
+
+// Format CLI changes as XML
+function formatCliChangesAsXml(changes: string[]): string {
+  if (changes.length === 0) return "<no-changes />";
+  return changes.map((c) => `<item>${c}</item>`).join("\n");
+}
 
 interface ToolDescriptions {
   description: string;
@@ -91,55 +139,76 @@ function createSummaryTool(language: Language): Anthropic.Tool {
 
 interface PromptTemplates {
   system: string;
+  user: string;
 }
 
 const PROMPT_TEMPLATES: Record<Language, PromptTemplates> = {
   en: {
-    system: `You are an expert at analyzing Claude Code changes.
+    system: `<role>
+You are an expert at analyzing Claude Code changes.
+</role>
 
-Below are the changes from Claude Code {fromVersion} to {toVersion}.
-Analyze the changes and provide a summary in English.
+<instructions>
+  <guideline>Explain technical content in a developer-friendly way</guideline>
+  <guideline>Leave empty arrays for categories with no changes</guideline>
+  <guideline>Include CLI changes in the cliChanges field as-is</guideline>
+  <guideline>Use the submit_changelog_summary tool to submit results</guideline>
+</instructions>
 
-## Changed file diff:
-{diffContent}
-
-## CLI Changelog (from GitHub releases):
-{cliChanges}
-
-## Analysis guidelines:
-- Explain technical content in a developer-friendly way
-- Leave empty arrays for categories with no changes
-- Include CLI changes in the cliChanges field as-is
-- Use the submit_changelog_summary tool to submit results
-
-## CRITICAL - What counts as a prompt change:
+<critical-rule name="prompt-change-criteria">
 promptChanges = changes to instructions, rules, or behavioral definitions given to Claude.
 EXCLUDE "extraction-time context" that changes every release (version numbers, dates, timestamps, paths, working directories).
-Only include changes that would make Claude behave differently.`,
+Only include changes that would make Claude behave differently.
+</critical-rule>`,
+
+    user: `<context>
+  <from-version>{fromVersion}</from-version>
+  <to-version>{toVersion}</to-version>
+</context>
+
+<diff>
+{diffContent}
+</diff>
+
+<cli-changelog>
+{cliChanges}
+</cli-changelog>
+
+Analyze the changes from {fromVersion} to {toVersion} and provide a summary in English.`,
   },
   ko: {
-    system: `당신은 Claude Code의 변경 사항을 분석하는 전문가입니다.
+    system: `<role>
+당신은 Claude Code의 변경 사항을 분석하는 전문가입니다.
+</role>
 
-아래는 Claude Code {fromVersion}에서 {toVersion}으로의 변경 사항입니다.
-변경 내용을 분석하여 한국어로 요약해주세요.
+<instructions>
+  <guideline>기술적인 내용을 개발자가 이해하기 쉽게 설명해주세요</guideline>
+  <guideline>변경 사항이 없는 카테고리는 빈 배열로 남겨주세요</guideline>
+  <guideline>CLI 변경 사항은 한국어로 번역하여 cliChanges 필드에 포함해주세요</guideline>
+  <guideline>기술 용어(함수명, 파일명, 설정값 등)는 영어로 유지해주세요</guideline>
+  <guideline>submit_changelog_summary 도구를 사용하여 결과를 제출해주세요</guideline>
+</instructions>
 
-## 변경 파일 diff:
-{diffContent}
-
-## CLI 변경 사항 (GitHub 릴리즈에서 가져옴, 한국어로 번역 필요):
-{cliChanges}
-
-## 분석 지침:
-- 기술적인 내용을 개발자가 이해하기 쉽게 설명해주세요
-- 변경 사항이 없는 카테고리는 빈 배열로 남겨주세요
-- CLI 변경 사항은 한국어로 번역하여 cliChanges 필드에 포함해주세요
-- 기술 용어(함수명, 파일명, 설정값 등)는 영어로 유지해주세요
-- submit_changelog_summary 도구를 사용하여 결과를 제출해주세요
-
-## 중요 - 프롬프트 변경의 기준:
+<critical-rule name="prompt-change-criteria">
 promptChanges = Claude에게 주어지는 지시, 규칙, 동작 정의의 변경.
 매 릴리즈마다 바뀌는 "추출 시점 컨텍스트"는 제외 (버전, 날짜, 타임스탬프, 경로, working directory).
-Claude의 동작이 달라지는 변경만 포함해주세요.`,
+Claude의 동작이 달라지는 변경만 포함해주세요.
+</critical-rule>`,
+
+    user: `<context>
+  <from-version>{fromVersion}</from-version>
+  <to-version>{toVersion}</to-version>
+</context>
+
+<diff>
+{diffContent}
+</diff>
+
+<cli-changelog translation-required="true">
+{cliChanges}
+</cli-changelog>
+
+{fromVersion}에서 {toVersion}으로의 변경 사항을 분석하여 한국어로 요약해주세요.`,
   },
 };
 
@@ -214,21 +283,17 @@ export async function generateSummary(
 ): Promise<ChangeSummary> {
   const client = new Anthropic({ apiKey });
 
-  const diffContent = diff.files
-    .map((file) => `### ${file.filename}\n\`\`\`diff\n${file.patch}\n\`\`\``)
-    .join("\n\n");
-
-  const cliChangesText =
-    cliChanges.length > 0
-      ? cliChanges.map((c) => `- ${c}`).join("\n")
-      : "(No CLI changes)";
+  // XML format
+  const diffContent = formatDiffAsXml(diff.files);
+  const cliChangesText = formatCliChangesAsXml(cliChanges);
 
   const template = PROMPT_TEMPLATES[language];
-  const prompt = template.system
-    .replace("{fromVersion}", diff.fromVersion)
-    .replace("{toVersion}", diff.toVersion)
-    .replace("{diffContent}", diffContent)
-    .replace("{cliChanges}", cliChangesText);
+  const userMessage = interpolateTemplate(template.user, {
+    fromVersion: diff.fromVersion,
+    toVersion: diff.toVersion,
+    diffContent,
+    cliChanges: cliChangesText,
+  });
 
   try {
     logger.info(`Generating summary with Claude API (language: ${language})`);
@@ -236,7 +301,8 @@ export async function generateSummary(
     const response = await client.messages.create({
       model: CLAUDE_CONFIG.MODEL,
       max_tokens: CLAUDE_CONFIG.MAX_TOKENS,
-      messages: [{ role: "user", content: prompt }],
+      system: template.system,
+      messages: [{ role: "user", content: userMessage }],
       tools: [createSummaryTool(language)],
       tool_choice: { type: "tool", name: "submit_changelog_summary" },
     });
