@@ -8,12 +8,14 @@ interface MessageStrings {
   cliChanges: string;
   flagChanges: string;
   promptChanges: string;
+  changes: string;
+  changelog: string;
   detailsInThread: string;
   viewDiff: string;
   added: string;
   removed: string;
   modified: string;
-  and: string;
+  counter: string;
 }
 
 const MESSAGES: Record<Language, MessageStrings> = {
@@ -22,24 +24,28 @@ const MESSAGES: Record<Language, MessageStrings> = {
     cliChanges: "CLI",
     flagChanges: "flag",
     promptChanges: "prompt",
+    changes: "changes",
+    changelog: "changelog",
     detailsInThread: "Details in thread",
     viewDiff: "Diff",
     added: "Added",
     removed: "Removed",
     modified: "Modified",
-    and: "and",
+    counter: "",
   },
   ko: {
-    released: "출시되었습니다.",
+    released: "버전이 출시되었습니다.",
     cliChanges: "CLI",
     flagChanges: "플래그",
     promptChanges: "프롬프트",
+    changes: "변경사항",
+    changelog: "변경사항",
     detailsInThread: "자세한 내용은 스레드에서 확인하세요",
     viewDiff: "Diff",
     added: "추가됨",
     removed: "제거됨",
     modified: "수정됨",
-    and: "및",
+    counter: "개",
   },
 };
 
@@ -98,21 +104,16 @@ function buildMainMessageBlocks(
   const promptCount = summary.promptChanges.length;
 
   const changeParts: string[] = [];
-  if (cliCount > 0) changeParts.push(`${cliCount} ${msg.cliChanges}`);
-  if (flagCount > 0) changeParts.push(`${flagCount} ${msg.flagChanges}`);
-  if (promptCount > 0) changeParts.push(`${promptCount} ${msg.promptChanges}`);
+  const c = msg.counter;
+  if (cliCount > 0) changeParts.push(`${cliCount}${c} ${msg.cliChanges}`);
+  if (flagCount > 0) changeParts.push(`${flagCount}${c} ${msg.flagChanges}`);
+  if (promptCount > 0) changeParts.push(`${promptCount}${c} ${msg.promptChanges}`);
 
   let countsText: string;
   if (changeParts.length === 0) {
     countsText = "";
-  } else if (changeParts.length === 1) {
-    countsText = `${changeParts[0]} changes.`;
-  } else if (changeParts.length === 2) {
-    countsText = `${changeParts[0]} ${msg.and} ${changeParts[1]} changes.`;
   } else {
-    const lastPart = changeParts[changeParts.length - 1];
-    const restParts = changeParts.slice(0, -1);
-    countsText = `${restParts.join(", ")}, ${msg.and} ${lastPart} changes.`;
+    countsText = `${changeParts.join(", ")} ${msg.changes}.`;
   }
 
   const mainText = `*Claude Code ${version}* ${msg.released}`;
@@ -145,7 +146,7 @@ function buildCliReplyBlocks(
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Claude Code CLI ${version} changelog:*\n${changesText}`,
+        text: `*Claude Code CLI ${version} ${msg.changelog}:*\n${changesText}`,
       },
     },
   ];
@@ -179,7 +180,7 @@ function buildPromptReplyBlocks(
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Claude Code ${version} ${msg.promptChanges} changes:*\n${changesText}`,
+        text: `*Claude Code ${version} ${msg.promptChanges} ${msg.changes}:*\n${changesText}`,
       },
     },
     {
@@ -218,7 +219,7 @@ function buildFlagReplyBlocks(
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Claude Code ${version} ${msg.flagChanges} changes:*\n${lines.join("\n")}`,
+        text: `*Claude Code ${version} ${msg.flagChanges} ${msg.changes}:*\n${lines.join("\n")}`,
       },
     },
     {
@@ -250,7 +251,11 @@ export async function sendWorkspaceNotification(
       message.summary,
       language,
     );
-    const mainResult = await postMessage(client, workspace.channelId, mainBlocks);
+    const mainResult = await postMessage(
+      client,
+      workspace.channelId,
+      mainBlocks,
+    );
 
     if (!mainResult.ts) {
       throw new Error("Failed to get thread timestamp from Slack response");
