@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 const SLACK_OAUTH_URL = "https://slack.com/oauth/v2/authorize";
-const REQUIRED_SCOPES = ["chat:write", "channels:read"];
+const REQUIRED_SCOPES = ["chat:write", "channels:read", "incoming-webhook"];
 
 export default function handler(req: VercelRequest, res: VercelResponse): void {
   const clientId = process.env.SLACK_CLIENT_ID;
