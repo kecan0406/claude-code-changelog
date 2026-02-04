@@ -1,6 +1,6 @@
-# Claude Code Version 2.1.30
+# Claude Code Version 2.1.31
 
-Release Date: 2026-02-03
+Release Date: 2026-02-04
 
 # User Message
 
@@ -9,7 +9,7 @@ The following skills are available for use with the Skill tool:
 
 - keybindings-help: Use when the user wants to customize keyboard shortcuts, rebind keys, add chord bindings, or modify ~/.claude/keybindings.json. Examples: "rebind ctrl+s", "add a chord shortcut", "change the submit key", "customize keybindings".
 </system-reminder>
-2026-02-03T18:08:50.877Z is the date. Write a haiku about it.
+2026-02-04T00:43:53.352Z is the date. Write a haiku about it.
 
 # System Prompt
 
@@ -137,11 +137,11 @@ assistant: Clients are marked as failed in the `connectToServer` function in src
 
 Here is useful information about the environment you are running in:
 <env>
-Working directory: /tmp/claude-history-1770142128944-kxnapv
+Working directory: /tmp/claude-history-1770165831574-g5wt57
 Is directory a git repo: No
 Platform: linux
 OS Version: Linux 6.8.0-90-generic
-Today's date: 2026-02-03
+Today's date: 2026-02-04
 </env>
 You are powered by the model named Sonnet 4.5. The exact model ID is claude-sonnet-4-5-20250929.
 
@@ -983,6 +983,7 @@ Since the user is greeting, use the greeting-responder agent to respond with a f
 assistant: "I'm going to use the Task tool to launch the greeting-responder agent"
 </example>
 
+Note: The "Agent Teams" feature (TeammateTool, SendMessage, spawnTeam) is not available on this plan. Only mention this if the user explicitly asks for "agent teams" by name, or asks for agents to send messages to each other (peer-to-peer messaging). Do NOT mention this limitation when users ask for parallel subagents, coordinating agents, launching a "team" of agents, or having agents work together — those are all normal Task tool usage and you should proceed normally.
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
@@ -1398,7 +1399,7 @@ Usage notes:
   - Web search is only available in the US
 
 IMPORTANT - Use the correct year in search queries:
-  - Today's date is 2026-02-03. You MUST use this year when searching for recent information, documentation, or current events.
+  - Today's date is 2026-02-04. You MUST use this year when searching for recent information, documentation, or current events.
   - Example: If the user asks for "latest React docs", search for "React documentation 2026", NOT "React documentation 2025"
 
 {
