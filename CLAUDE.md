@@ -48,12 +48,15 @@ src/
     crypto.ts           # AES-256-GCM encryption for bot tokens
     logger.ts           # Console logger with sensitive data masking
     retry.ts            # Exponential backoff with jitter retry utility
+    slack-verify.ts     # Slack request signature verification (HMAC-SHA256)
 
 api/oauth/              # Vercel API routes (OAuth installation)
   install.ts            # OAuth install redirect with language selection
   callback.ts           # OAuth callback handler with welcome message
 api/cron/               # Vercel API routes (Scheduled tasks)
   notify.ts             # Manual notification trigger endpoint (requires CRON_SECRET)
+api/slack/              # Vercel API routes (Slack interactions)
+  commands.ts           # Slash command handler (/changelog-lang)
 ```
 
 ## Key Behaviors
@@ -87,6 +90,7 @@ api/cron/               # Vercel API routes (Scheduled tasks)
 | `SLACK_CLIENT_SECRET`      | Yes      | Slack App client secret                        |
 | `ENCRYPTION_KEY`           | Yes      | 64-char hex key (32 bytes) for token encryption |
 | `ANTHROPIC_API_KEY`        | Yes      | Anthropic API key                              |
+| `SLACK_SIGNING_SECRET`     | No*      | Slack App signing secret (required for slash commands) |
 | `CRON_SECRET`              | No*      | Secret for Vercel cron/manual trigger auth     |
 | `GITHUB_TOKEN`             | No       | GitHub token (increases rate limit)            |
 | `UPSTREAM_OWNER`           | No       | GitHub owner (default: `marckrenn`)            |

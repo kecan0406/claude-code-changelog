@@ -23,6 +23,9 @@ export interface AppConfig {
 
   // GitHub API (optional - increases rate limit from 60/hr to 5000/hr)
   githubToken: string | null;
+
+  // Slack Signing Secret (optional - required for slash commands)
+  slackSigningSecret: string | null;
 }
 
 interface EnvValidation {
@@ -44,6 +47,7 @@ const ENV_VALIDATIONS: EnvValidation[] = [
   { key: "cliRepoOwner", envVar: "CLI_REPO_OWNER", required: false, defaultValue: GITHUB_DEFAULTS.CLI_REPO_OWNER },
   { key: "cliRepoName", envVar: "CLI_REPO_NAME", required: false, defaultValue: GITHUB_DEFAULTS.CLI_REPO_NAME },
   { key: "githubToken", envVar: "GITHUB_TOKEN", required: false },
+  { key: "slackSigningSecret", envVar: "SLACK_SIGNING_SECRET", required: false },
 ];
 
 let cachedConfig: AppConfig | null = null;
@@ -73,9 +77,12 @@ export function loadConfig(): AppConfig {
     );
   }
 
-  // Convert empty githubToken to null
+  // Convert empty optional fields to null
   if (!config.githubToken) {
     config.githubToken = null as unknown as string;
+  }
+  if (!config.slackSigningSecret) {
+    config.slackSigningSecret = null as unknown as string;
   }
 
   // Validate encryption key format (should be 64 hex chars for 32 bytes)
