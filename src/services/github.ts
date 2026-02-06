@@ -89,10 +89,17 @@ export async function getChangelogDiff(
         head: toVersion,
       });
 
-      const relevantFiles = (comparison.files || [])
-        .filter((file) => TARGET_FILES.includes(file.filename))
+      const relevantFiles = (comparison.files ?? [])
+        .filter((file: { filename: string }) =>
+          TARGET_FILES.includes(file.filename),
+        )
         .map(
-          (file): FileDiff => ({
+          (file: {
+            filename: string;
+            patch?: string;
+            additions: number;
+            deletions: number;
+          }): FileDiff => ({
             filename: file.filename,
             patch: file.patch || "",
             additions: file.additions ?? 0,
@@ -216,4 +223,18 @@ function parseChangelogSection(content: string, version: string): string[] {
 
 function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function findPreviousTag(currentTag: string): string {
+  const match = currentTag.match(/^v?(\d+)\.(\d+)\.(\d+)$/);
+  if (!match) return currentTag;
+
+  const [, major, minor, patch] = match;
+  const patchNum = parseInt(patch, 10);
+
+  if (patchNum > 0) {
+    return `${currentTag.startsWith("v") ? "v" : ""}${major}.${minor}.${patchNum - 1}`;
+  }
+
+  return currentTag;
 }

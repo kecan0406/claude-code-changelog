@@ -3,6 +3,7 @@ import type {
   KnownBlock,
   SectionBlock,
   ContextBlock,
+  DividerBlock,
   MrkdwnElement,
 } from "@slack/types";
 import type { SlackMessage, ChangeSummary, Language } from "../types/index.js";
@@ -173,8 +174,10 @@ function buildMainMessageBlocks(
   version: string,
   summary: ChangeSummary,
   language: Language,
+  options?: { includeThreadHint?: boolean },
 ): KnownBlock[] {
   const msg = MESSAGES[language];
+  const includeThreadHint = options?.includeThreadHint !== false;
 
   const cliCount = summary.cliChanges.length;
   const flagCount =
@@ -187,7 +190,8 @@ function buildMainMessageBlocks(
   const c = msg.counter;
   if (cliCount > 0) changeParts.push(`${cliCount}${c} ${msg.cliChanges}`);
   if (flagCount > 0) changeParts.push(`${flagCount}${c} ${msg.flagChanges}`);
-  if (promptCount > 0) changeParts.push(`${promptCount}${c} ${msg.promptChanges}`);
+  if (promptCount > 0)
+    changeParts.push(`${promptCount}${c} ${msg.promptChanges}`);
 
   let countsText: string;
   if (changeParts.length === 0) {
@@ -197,16 +201,23 @@ function buildMainMessageBlocks(
   }
 
   const mainText = `*Claude Code ${version}* ${msg.released}`;
-  const bodyText = countsText
-    ? `${countsText}\n${msg.detailsInThread}`
-    : msg.detailsInThread;
+  let bodyText: string;
+  if (includeThreadHint) {
+    bodyText = countsText
+      ? `${countsText}\n${msg.detailsInThread}`
+      : msg.detailsInThread;
+  } else {
+    bodyText = countsText;
+  }
+
+  const text = bodyText ? `${mainText}\n${bodyText}` : mainText;
 
   return [
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `${mainText}\n${bodyText}`,
+        text,
       },
     } satisfies SectionBlock,
   ];
@@ -487,7 +498,74 @@ export async function sendNotificationToWorkspaces(
     return {
       workspace: { teamId: "unknown", teamName: "unknown" } as Workspace,
       success: false,
-      error: result.reason instanceof Error ? result.reason : new Error(String(result.reason)),
+      error:
+        result.reason instanceof Error
+          ? result.reason
+          : new Error(String(result.reason)),
     };
   });
+}
+
+export interface ChangelogBlocksInput {
+  version: string;
+  summary: ChangeSummary;
+  compareUrl: string;
+  cliCompareUrl: string;
+  language: Language;
+}
+
+export function buildChangelogBlocks(
+  input: ChangelogBlocksInput,
+): KnownBlock[] {
+  const { version, summary, compareUrl, cliCompareUrl, language } = input;
+  const blocks: KnownBlock[] = [];
+
+  blocks.push(
+    ...buildMainMessageBlocks(version, summary, language, {
+      includeThreadHint: false,
+    }),
+  );
+
+  if (summary.cliChanges.length > 0) {
+    blocks.push({ type: "divider" } satisfies DividerBlock);
+    blocks.push(
+      ...buildCliReplyBlocks(
+        version,
+        summary.cliChanges,
+        cliCompareUrl,
+        language,
+      ),
+    );
+  }
+
+  const hasFlags =
+    summary.flagChanges.added.length > 0 ||
+    summary.flagChanges.removed.length > 0 ||
+    summary.flagChanges.modified.length > 0;
+
+  if (hasFlags) {
+    blocks.push({ type: "divider" } satisfies DividerBlock);
+    blocks.push(
+      ...buildFlagReplyBlocks(
+        version,
+        summary.flagChanges,
+        compareUrl,
+        language,
+      ),
+    );
+  }
+
+  if (summary.promptChanges.length > 0) {
+    blocks.push({ type: "divider" } satisfies DividerBlock);
+    blocks.push(
+      ...buildPromptReplyBlocks(
+        version,
+        summary.promptChanges,
+        compareUrl,
+        language,
+      ),
+    );
+  }
+
+  return blocks;
 }

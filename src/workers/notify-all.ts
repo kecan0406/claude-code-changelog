@@ -2,6 +2,7 @@ import {
   getLatestTag,
   getChangelogDiff,
   getCliChangelog,
+  findPreviousTag,
   GITHUB_DEFAULTS,
 } from "../services/github.js";
 import { generateSummary } from "../services/claude.js";
@@ -21,10 +22,7 @@ import {
   getFailedWorkspaces,
   removeFailedWorkspace,
 } from "../db/index.js";
-import {
-  recordNotificationMetrics,
-  recordError,
-} from "../db/metrics.js";
+import { recordNotificationMetrics, recordError } from "../db/metrics.js";
 import { logger } from "../utils/logger.js";
 import type { ChangelogDiff, Language, ChangeSummary } from "../types/index.js";
 
@@ -67,20 +65,6 @@ function isNewerVersion(current: string, last: string | null): boolean {
   if (curMajor !== lastMajor) return curMajor > lastMajor;
   if (curMinor !== lastMinor) return curMinor > lastMinor;
   return curPatch > lastPatch;
-}
-
-function findPreviousTag(currentTag: string): string {
-  const match = currentTag.match(/^v?(\d+)\.(\d+)\.(\d+)$/);
-  if (!match) return currentTag;
-
-  const [, major, minor, patch] = match;
-  const patchNum = parseInt(patch, 10);
-
-  if (patchNum > 0) {
-    return `${currentTag.startsWith("v") ? "v" : ""}${major}.${minor}.${patchNum - 1}`;
-  }
-
-  return currentTag;
 }
 
 const NOTIFICATION_LOCK_KEY = "notification";

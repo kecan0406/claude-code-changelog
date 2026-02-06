@@ -45,8 +45,11 @@ function isValidTeamId(value: string): boolean {
   return /^T[A-Z0-9]{1,20}$/.test(value);
 }
 
-function ephemeralResponse(text: string): { response_type: string; text: string } {
-  return { response_type: "ephemeral", text };
+function slackResponse(
+  text: string,
+  type: "in_channel" | "ephemeral" = "in_channel",
+): { response_type: string; text: string } {
+  return { response_type: type, text };
 }
 
 export default async function handler(
@@ -90,16 +93,23 @@ export default async function handler(
     const text = (params.get("text") || "").trim().toLowerCase();
 
     if (!teamId || !isValidTeamId(teamId)) {
-      res.status(200).json(ephemeralResponse("Error: invalid team_id"));
+      res
+        .status(200)
+        .json(slackResponse("Error: invalid team_id", "ephemeral"));
       return;
     }
 
     const workspace = await getWorkspaceByTeamId(teamId);
 
     if (!workspace) {
-      res.status(200).json(
-        ephemeralResponse("This workspace is not registered. Please reinstall the app."),
-      );
+      res
+        .status(200)
+        .json(
+          slackResponse(
+            "This workspace is not registered. Please reinstall the app.",
+            "ephemeral",
+          ),
+        );
       return;
     }
 
@@ -110,15 +120,20 @@ export default async function handler(
         workspace.language === "ko"
           ? `현재 알림 언어: ${label}`
           : `Current notification language: ${label}`;
-      res.status(200).json(ephemeralResponse(message));
+      res.status(200).json(slackResponse(message));
       return;
     }
 
     // Validate language argument
     if (!isValidLanguage(text)) {
-      res.status(200).json(
-        ephemeralResponse(`Invalid language. Use: ${VALID_LANGUAGES.join(", ")}`),
-      );
+      res
+        .status(200)
+        .json(
+          slackResponse(
+            `Invalid language. Use: ${VALID_LANGUAGES.join(", ")}`,
+            "ephemeral",
+          ),
+        );
       return;
     }
 
@@ -131,11 +146,16 @@ export default async function handler(
         : `Notification language changed to ${LANGUAGE_LABELS[text]}.`;
 
     logger.info(`Language updated for team ${teamId}: ${text}`);
-    res.status(200).json(ephemeralResponse(successMessage));
+    res.status(200).json(slackResponse(successMessage));
   } catch (error) {
     logger.error("Slash command handler failed", error);
-    res.status(200).json(
-      ephemeralResponse("An error occurred. Please try again later."),
-    );
+    res
+      .status(200)
+      .json(
+        slackResponse(
+          "An error occurred. Please try again later.",
+          "ephemeral",
+        ),
+      );
   }
 }
