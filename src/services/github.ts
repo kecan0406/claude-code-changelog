@@ -161,34 +161,29 @@ export async function getCliChangelog(
 ): Promise<CliChangelogResult> {
   const octokit = getOctokit();
 
-  try {
-    return await withRetry(async () => {
-      logger.info(`Fetching CLI changelog for version ${version}`);
+  return withRetry(async () => {
+    logger.info(`Fetching CLI changelog for version ${version}`);
 
-      const { data } = await octokit.repos.getContent({
-        owner: config.cliRepoOwner,
-        repo: config.cliRepoName,
-        path: "CHANGELOG.md",
-        ref: "main",
-      });
-
-      if (!("content" in data) || data.encoding !== "base64") {
-        throw new Error("Unexpected response format for CHANGELOG.md");
-      }
-
-      const content = Buffer.from(data.content, "base64").toString("utf-8");
-      const changes = parseChangelogSection(content, version);
-
-      const compareUrl = `https://github.com/${config.cliRepoOwner}/${config.cliRepoName}/releases/tag/${version}`;
-
-      logger.info(`Found ${changes.length} CLI changes for ${version}`);
-
-      return { changes, compareUrl };
+    const { data } = await octokit.repos.getContent({
+      owner: config.cliRepoOwner,
+      repo: config.cliRepoName,
+      path: "CHANGELOG.md",
+      ref: "main",
     });
-  } catch (error) {
-    logger.warn(`Failed to fetch CLI changelog for ${version}`, error);
-    return { changes: [], compareUrl: "" };
-  }
+
+    if (!("content" in data) || data.encoding !== "base64") {
+      throw new Error("Unexpected response format for CHANGELOG.md");
+    }
+
+    const content = Buffer.from(data.content, "base64").toString("utf-8");
+    const changes = parseChangelogSection(content, version);
+
+    const compareUrl = `https://github.com/${config.cliRepoOwner}/${config.cliRepoName}/releases/tag/${version}`;
+
+    logger.info(`Found ${changes.length} CLI changes for ${version}`);
+
+    return { changes, compareUrl };
+  });
 }
 
 function parseChangelogSection(content: string, version: string): string[] {

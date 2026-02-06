@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { waitUntil } from "@vercel/functions";
 import type { IncomingMessage } from "http";
-import type { KnownBlock } from "@slack/types";
 import { verifySlackSignature } from "../../src/utils/slack-verify.js";
 import { getWorkspaceByTeamId } from "../../src/db/workspaces.js";
 import { getLastCheckedVersion } from "../../src/db/state.js";
@@ -14,7 +13,7 @@ import {
   GITHUB_DEFAULTS,
 } from "../../src/services/github.js";
 import { generateSummary } from "../../src/services/claude.js";
-import { buildChangelogBlocks } from "../../src/services/slack.js";
+import { postThreadedChangelog } from "../../src/services/slack.js";
 import { logger } from "../../src/utils/logger.js";
 import type { Language } from "../../src/types/index.js";
 
@@ -44,19 +43,13 @@ function isValidTeamId(value: string): boolean {
   return /^T[A-Z0-9]{1,20}$/.test(value);
 }
 
-function isValidSlackResponseUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return (
-      parsed.hostname.endsWith(".slack.com") && parsed.protocol === "https:"
-    );
-  } catch {
-    return false;
-  }
+function isValidChannelId(value: string): boolean {
+  return /^[CDG][A-Z0-9]{1,20}$/.test(value);
 }
 
 interface CommandStrings {
   generating: string;
+  posting: string;
   noData: string;
   error: string;
   notRegistered: string;
@@ -66,6 +59,7 @@ interface CommandStrings {
 const COMMAND_MESSAGES: Record<Language, CommandStrings> = {
   en: {
     generating: "Generating changelog summary... This may take 10-20 seconds.",
+    posting: "Posting changelog summary...",
     noData:
       "No changelog data is available yet. Please try again after a notification has been sent.",
     error: "Failed to generate changelog. Please try again later.",
@@ -76,6 +70,7 @@ const COMMAND_MESSAGES: Record<Language, CommandStrings> = {
   ko: {
     generating:
       "변경사항 요약을 생성 중입니다... 10-20초 정도 소요될 수 있습니다.",
+    posting: "변경사항 요약을 게시 중입니다...",
     noData:
       "아직 변경사항 데이터가 없습니다. 알림이 전송된 후 다시 시도해주세요.",
     error: "변경사항 생성에 실패했습니다. 나중에 다시 시도해주세요.",
@@ -99,36 +94,6 @@ function getGitHubConfig() {
       cliRepoName: GITHUB_DEFAULTS.CLI_REPO_NAME,
     },
   };
-}
-
-async function postToResponseUrl(
-  responseUrl: string,
-  blocks: KnownBlock[],
-): Promise<void> {
-  const textParts: string[] = [];
-  for (const b of blocks) {
-    if (b.type === "section" && "text" in b && b.text) {
-      textParts.push(b.text.text);
-    }
-  }
-  const textFallback = textParts.join("\n").slice(0, 200);
-
-  const response = await fetch(responseUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      response_type: "in_channel",
-      replace_original: true,
-      blocks,
-      text: textFallback || "Changelog",
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `response_url POST failed: ${response.status} ${response.statusText}`,
-    );
-  }
 }
 
 async function postErrorToResponseUrl(
@@ -155,6 +120,17 @@ async function postErrorToResponseUrl(
   }
 }
 
+function isValidSlackResponseUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.hostname.endsWith(".slack.com") && parsed.protocol === "https:"
+    );
+  } catch {
+    return false;
+  }
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   return Promise.race([
@@ -165,8 +141,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   ]).finally(() => clearTimeout(timer));
 }
 
-async function generateAndRespond(
-  responseUrl: string,
+async function generateAndPostThread(
+  botToken: string,
+  channelId: string,
   version: string,
   language: Language,
 ): Promise<void> {
@@ -178,10 +155,17 @@ async function generateAndRespond(
   const ghConfig = getGitHubConfig();
   const fromVersion = findPreviousTag(version);
 
-  const [diff, cliResult] = await Promise.all([
-    getChangelogDiff(ghConfig.upstream, fromVersion, version),
-    getCliChangelog(ghConfig.cli, version),
-  ]);
+  const diff = await getChangelogDiff(ghConfig.upstream, fromVersion, version);
+
+  let cliResult: { changes: string[]; compareUrl: string };
+  try {
+    cliResult = await getCliChangelog(ghConfig.cli, version);
+  } catch {
+    logger.warn(
+      `CLI changelog fetch failed for ${version}, proceeding without CLI data`,
+    );
+    cliResult = { changes: [], compareUrl: "" };
+  }
 
   const summary = await generateSummary(
     anthropicApiKey,
@@ -192,15 +176,15 @@ async function generateAndRespond(
 
   await summaryCache.set(version, language, summary);
 
-  const blocks = buildChangelogBlocks({
+  await postThreadedChangelog(
+    botToken,
+    channelId,
     version,
     summary,
-    compareUrl: diff.compareUrl,
-    cliCompareUrl: cliResult.compareUrl,
+    diff.compareUrl,
+    cliResult.compareUrl,
     language,
-  });
-
-  await postToResponseUrl(responseUrl, blocks);
+  );
 }
 
 export default async function handler(
@@ -238,6 +222,7 @@ export default async function handler(
 
     const params = new URLSearchParams(rawBody);
     const teamId = params.get("team_id");
+    const channelId = params.get("channel_id");
     const responseUrl = params.get("response_url");
 
     if (!teamId || !isValidTeamId(teamId)) {
@@ -260,7 +245,6 @@ export default async function handler(
     const msg = COMMAND_MESSAGES[language];
     const ghConfig = getGitHubConfig();
 
-    // Determine current version
     let version = await getLastCheckedVersion();
 
     if (!version) {
@@ -272,6 +256,11 @@ export default async function handler(
       version = latestTag.name;
     }
 
+    const targetChannelId =
+      channelId && isValidChannelId(channelId)
+        ? channelId
+        : workspace.channelId;
+
     // Try cache first
     const cachedSummary = await summaryCache.get(version, language);
 
@@ -282,48 +271,56 @@ export default async function handler(
       const compareUrl = `https://github.com/${ghConfig.upstream.upstreamOwner}/${ghConfig.upstream.upstreamRepo}/compare/${fromVersion}...${version}`;
       const cliCompareUrl = `https://github.com/${ghConfig.cli.cliRepoOwner}/${ghConfig.cli.cliRepoName}/releases/tag/${version}`;
 
-      const blocks = buildChangelogBlocks({
-        version,
-        summary: cachedSummary,
-        compareUrl,
-        cliCompareUrl,
-        language,
-      });
+      // Return immediate ack, post thread asynchronously
+      res.status(200).json({ response_type: "in_channel", text: msg.posting });
 
-      res.status(200).json({
-        response_type: "in_channel",
-        blocks,
-        text: `Claude Code ${version} changelog`,
-      });
+      waitUntil(
+        withTimeout(
+          postThreadedChangelog(
+            workspace.botToken,
+            targetChannelId,
+            version,
+            cachedSummary,
+            compareUrl,
+            cliCompareUrl,
+            language,
+          ),
+          ASYNC_TIMEOUT_MS,
+        ).catch(async (error) => {
+          logger.error("/changelog cached thread posting failed", error);
+          if (responseUrl && isValidSlackResponseUrl(responseUrl)) {
+            await postErrorToResponseUrl(responseUrl, msg.error);
+          }
+        }),
+      );
       return;
     }
 
-    // Cache miss: return immediate response and continue async
+    // Cache miss: return immediate response and generate async
     logger.info(
       `/changelog cache miss for ${version}:${language}, generating async`,
     );
 
-    if (!responseUrl || !isValidSlackResponseUrl(responseUrl)) {
-      res
-        .status(200)
-        .json({ response_type: "in_channel", text: msg.generating });
-      return;
-    }
-
     res.status(200).json({ response_type: "in_channel", text: msg.generating });
 
-    // Use waitUntil to keep the function alive after response is sent
     waitUntil(
       withTimeout(
-        generateAndRespond(responseUrl, version, language),
+        generateAndPostThread(
+          workspace.botToken,
+          targetChannelId,
+          version,
+          language,
+        ),
         ASYNC_TIMEOUT_MS,
       ).catch(async (error) => {
         logger.error("/changelog async generation failed", error);
-        const errorMsg =
-          error instanceof Error && error.message === "Timeout"
-            ? msg.timeout
-            : msg.error;
-        await postErrorToResponseUrl(responseUrl, errorMsg);
+        if (responseUrl && isValidSlackResponseUrl(responseUrl)) {
+          const errorMsg =
+            error instanceof Error && error.message === "Timeout"
+              ? msg.timeout
+              : msg.error;
+          await postErrorToResponseUrl(responseUrl, errorMsg);
+        }
       }),
     );
   } catch (error) {

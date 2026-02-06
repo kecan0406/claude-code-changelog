@@ -12,6 +12,16 @@ function summaryKey(version: string, language: Language): string {
   return buildKey(KeyPrefix.SUMMARY, version, language);
 }
 
+function hasSubstantialContent(summary: ChangeSummary): boolean {
+  return (
+    summary.cliChanges.length > 0 ||
+    summary.promptChanges.length > 0 ||
+    summary.flagChanges.added.length > 0 ||
+    summary.flagChanges.removed.length > 0 ||
+    summary.flagChanges.modified.length > 0
+  );
+}
+
 export interface SummaryCacheOptions {
   ttlDays?: number;
 }
@@ -45,6 +55,13 @@ export class SummaryCache {
     summary: ChangeSummary,
     options: SummaryCacheOptions = {},
   ): Promise<void> {
+    if (!hasSubstantialContent(summary)) {
+      logger.warn(
+        `Skipping cache for ${version}:${language} - no substantial content`,
+      );
+      return;
+    }
+
     const { ttlDays = CACHE_DEFAULTS.TTL_DAYS } = options;
     const key = summaryKey(version, language);
     const ttlSeconds = ttlDays * 24 * 60 * 60;
@@ -112,7 +129,10 @@ export class SummaryCache {
         results.set(lang, summary);
         logger.info(`Generated and cached summary for ${version}:${lang}`);
       } catch (error) {
-        logger.error(`Failed to generate summary for ${version}:${lang}`, error);
+        logger.error(
+          `Failed to generate summary for ${version}:${lang}`,
+          error,
+        );
       }
     });
 

@@ -146,23 +146,30 @@ async function executeNotification(): Promise<void> {
   // Get changelog diff
   const fromVersion = lastCheckedVersion || findPreviousTag(latestTag.name);
 
-  const [diff, cliResult] = await Promise.all([
-    getChangelogDiff(
-      {
-        upstreamOwner: config.upstreamOwner,
-        upstreamRepo: config.upstreamRepo,
-      },
-      fromVersion,
-      latestTag.name,
-    ),
-    getCliChangelog(
+  const diff = await getChangelogDiff(
+    {
+      upstreamOwner: config.upstreamOwner,
+      upstreamRepo: config.upstreamRepo,
+    },
+    fromVersion,
+    latestTag.name,
+  );
+
+  let cliResult: { changes: string[]; compareUrl: string };
+  try {
+    cliResult = await getCliChangelog(
       {
         cliRepoOwner: config.cliRepoOwner,
         cliRepoName: config.cliRepoName,
       },
       latestTag.name,
-    ),
-  ]);
+    );
+  } catch {
+    logger.warn(
+      `CLI changelog fetch failed for ${latestTag.name}, proceeding without CLI data`,
+    );
+    cliResult = { changes: [], compareUrl: "" };
+  }
 
   const hasPromptOrFlagChanges = diff.files.length > 0;
   const hasCliChanges = cliResult.changes.length > 0;

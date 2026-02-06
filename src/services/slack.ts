@@ -3,7 +3,6 @@ import type {
   KnownBlock,
   SectionBlock,
   ContextBlock,
-  DividerBlock,
   MrkdwnElement,
 } from "@slack/types";
 import type { SlackMessage, ChangeSummary, Language } from "../types/index.js";
@@ -61,6 +60,8 @@ interface MessageStrings {
   removed: string;
   modified: string;
   counter: string;
+  noChanges: string;
+  majorPrefix: string;
 }
 
 const MESSAGES: Record<Language, MessageStrings> = {
@@ -77,6 +78,8 @@ const MESSAGES: Record<Language, MessageStrings> = {
     removed: "Removed",
     modified: "Modified",
     counter: "",
+    noChanges: "no",
+    majorPrefix: "major ",
   },
   ko: {
     released: "버전이 출시되었습니다.",
@@ -91,6 +94,8 @@ const MESSAGES: Record<Language, MessageStrings> = {
     removed: "제거됨",
     modified: "수정됨",
     counter: "개",
+    noChanges: "없음",
+    majorPrefix: "주요 ",
   },
 };
 
@@ -186,31 +191,26 @@ function buildMainMessageBlocks(
     summary.flagChanges.modified.length;
   const promptCount = summary.promptChanges.length;
 
-  const changeParts: string[] = [];
   const c = msg.counter;
-  if (cliCount > 0) changeParts.push(`${cliCount}${c} ${msg.cliChanges}`);
-  if (flagCount > 0) changeParts.push(`${flagCount}${c} ${msg.flagChanges}`);
-  if (promptCount > 0)
-    changeParts.push(`${promptCount}${c} ${msg.promptChanges}`);
-
-  let countsText: string;
-  if (changeParts.length === 0) {
-    countsText = "";
-  } else {
-    countsText = `${changeParts.join(", ")} ${msg.changes}.`;
-  }
+  const cliPart =
+    cliCount > 0
+      ? `${cliCount}${c} ${msg.cliChanges}`
+      : `${msg.noChanges} ${msg.cliChanges}`;
+  const flagPart =
+    flagCount > 0
+      ? `${flagCount}${c} ${msg.flagChanges}`
+      : `${msg.noChanges} ${msg.flagChanges}`;
+  const promptPart =
+    promptCount > 0
+      ? `${promptCount}${c} ${msg.majorPrefix}${msg.promptChanges}`
+      : `${msg.noChanges} ${msg.majorPrefix}${msg.promptChanges}`;
+  const countsText = `${cliPart}, ${flagPart}, ${promptPart} ${msg.changes}.`;
 
   const mainText = `*Claude Code ${version}* ${msg.released}`;
-  let bodyText: string;
-  if (includeThreadHint) {
-    bodyText = countsText
-      ? `${countsText}\n${msg.detailsInThread}`
-      : msg.detailsInThread;
-  } else {
-    bodyText = countsText;
-  }
-
-  const text = bodyText ? `${mainText}\n${bodyText}` : mainText;
+  const bodyText = includeThreadHint
+    ? `${countsText}\n${msg.detailsInThread}`
+    : countsText;
+  const text = `${mainText}\n${bodyText}`;
 
   return [
     {
@@ -283,76 +283,85 @@ function buildFlagReplyBlocks(
   });
 }
 
+export async function postThreadedChangelog(
+  botToken: string,
+  channelId: string,
+  version: string,
+  summary: ChangeSummary,
+  compareUrl: string,
+  cliCompareUrl: string,
+  language: Language,
+): Promise<void> {
+  const client = new WebClient(botToken);
+
+  const mainBlocks = buildMainMessageBlocks(version, summary, language);
+  const mainResult = await postMessage(client, channelId, mainBlocks);
+
+  if (!mainResult.ts) {
+    throw new Error("Failed to get thread timestamp from Slack response");
+  }
+  const threadTs = mainResult.ts;
+
+  if (summary.cliChanges.length > 0) {
+    await delay(MESSAGE_DELAY_MS);
+    const cliBlocks = buildCliReplyBlocks(
+      version,
+      summary.cliChanges,
+      cliCompareUrl,
+      language,
+    );
+    await postMessage(client, channelId, cliBlocks, threadTs);
+  }
+
+  const hasFlags =
+    summary.flagChanges.added.length > 0 ||
+    summary.flagChanges.removed.length > 0 ||
+    summary.flagChanges.modified.length > 0;
+
+  if (hasFlags) {
+    await delay(MESSAGE_DELAY_MS);
+    const flagBlocks = buildFlagReplyBlocks(
+      version,
+      summary.flagChanges,
+      compareUrl,
+      language,
+    );
+    await postMessage(client, channelId, flagBlocks, threadTs);
+  }
+
+  if (summary.promptChanges.length > 0) {
+    await delay(MESSAGE_DELAY_MS);
+    const promptBlocks = buildPromptReplyBlocks(
+      version,
+      summary.promptChanges,
+      compareUrl,
+      language,
+    );
+    await postMessage(client, channelId, promptBlocks, threadTs);
+  }
+}
+
 export async function sendWorkspaceNotification(
   workspace: Workspace,
   message: SlackMessage,
 ): Promise<void> {
-  const client = new WebClient(workspace.botToken);
-  const language = workspace.language;
-
   try {
     logger.info(
       `Sending notification to workspace ${workspace.teamName} (${workspace.teamId}) for ${message.version}`,
     );
 
-    const mainBlocks = buildMainMessageBlocks(
+    await postThreadedChangelog(
+      workspace.botToken,
+      workspace.channelId,
       message.version,
       message.summary,
-      language,
+      message.compareUrl,
+      message.cliCompareUrl,
+      workspace.language,
     );
-    const mainResult = await postMessage(
-      client,
-      workspace.channelId,
-      mainBlocks,
-    );
-
-    if (!mainResult.ts) {
-      throw new Error("Failed to get thread timestamp from Slack response");
-    }
-    const threadTs = mainResult.ts;
-
-    // Send thread replies with rate limit delay
-    if (message.summary.cliChanges.length > 0) {
-      await delay(MESSAGE_DELAY_MS);
-      const cliBlocks = buildCliReplyBlocks(
-        message.version,
-        message.summary.cliChanges,
-        message.cliCompareUrl,
-        language,
-      );
-      await postMessage(client, workspace.channelId, cliBlocks, threadTs);
-    }
-
-    const hasFlags =
-      message.summary.flagChanges.added.length > 0 ||
-      message.summary.flagChanges.removed.length > 0 ||
-      message.summary.flagChanges.modified.length > 0;
-
-    if (hasFlags) {
-      await delay(MESSAGE_DELAY_MS);
-      const flagBlocks = buildFlagReplyBlocks(
-        message.version,
-        message.summary.flagChanges,
-        message.compareUrl,
-        language,
-      );
-      await postMessage(client, workspace.channelId, flagBlocks, threadTs);
-    }
-
-    if (message.summary.promptChanges.length > 0) {
-      await delay(MESSAGE_DELAY_MS);
-      const promptBlocks = buildPromptReplyBlocks(
-        message.version,
-        message.summary.promptChanges,
-        message.compareUrl,
-        language,
-      );
-      await postMessage(client, workspace.channelId, promptBlocks, threadTs);
-    }
 
     logger.info(`Notification sent to workspace ${workspace.teamName}`);
   } catch (error) {
-    // Auto-deactivate workspace if token is invalid
     if (isTokenInvalidError(error)) {
       logger.warn(
         `Token invalid for workspace ${workspace.teamName}, deactivating`,
@@ -504,68 +513,4 @@ export async function sendNotificationToWorkspaces(
           : new Error(String(result.reason)),
     };
   });
-}
-
-export interface ChangelogBlocksInput {
-  version: string;
-  summary: ChangeSummary;
-  compareUrl: string;
-  cliCompareUrl: string;
-  language: Language;
-}
-
-export function buildChangelogBlocks(
-  input: ChangelogBlocksInput,
-): KnownBlock[] {
-  const { version, summary, compareUrl, cliCompareUrl, language } = input;
-  const blocks: KnownBlock[] = [];
-
-  blocks.push(
-    ...buildMainMessageBlocks(version, summary, language, {
-      includeThreadHint: false,
-    }),
-  );
-
-  if (summary.cliChanges.length > 0) {
-    blocks.push({ type: "divider" } satisfies DividerBlock);
-    blocks.push(
-      ...buildCliReplyBlocks(
-        version,
-        summary.cliChanges,
-        cliCompareUrl,
-        language,
-      ),
-    );
-  }
-
-  const hasFlags =
-    summary.flagChanges.added.length > 0 ||
-    summary.flagChanges.removed.length > 0 ||
-    summary.flagChanges.modified.length > 0;
-
-  if (hasFlags) {
-    blocks.push({ type: "divider" } satisfies DividerBlock);
-    blocks.push(
-      ...buildFlagReplyBlocks(
-        version,
-        summary.flagChanges,
-        compareUrl,
-        language,
-      ),
-    );
-  }
-
-  if (summary.promptChanges.length > 0) {
-    blocks.push({ type: "divider" } satisfies DividerBlock);
-    blocks.push(
-      ...buildPromptReplyBlocks(
-        version,
-        summary.promptChanges,
-        compareUrl,
-        language,
-      ),
-    );
-  }
-
-  return blocks;
 }
