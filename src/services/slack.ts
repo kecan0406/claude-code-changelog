@@ -49,7 +49,6 @@ function isTokenInvalidError(error: unknown): boolean {
 
 interface MessageStrings {
   released: string;
-  cliChanges: string;
   flagChanges: string;
   promptChanges: string;
   changes: string;
@@ -59,15 +58,11 @@ interface MessageStrings {
   added: string;
   removed: string;
   modified: string;
-  counter: string;
-  noChanges: string;
-  majorPrefix: string;
 }
 
 const MESSAGES: Record<Language, MessageStrings> = {
   en: {
     released: "is out.",
-    cliChanges: "CLI",
     flagChanges: "flag",
     promptChanges: "prompt",
     changes: "changes",
@@ -77,13 +72,9 @@ const MESSAGES: Record<Language, MessageStrings> = {
     added: "Added",
     removed: "Removed",
     modified: "Modified",
-    counter: "",
-    noChanges: "no",
-    majorPrefix: "major ",
   },
   ko: {
     released: "버전이 출시되었습니다.",
-    cliChanges: "CLI",
     flagChanges: "플래그",
     promptChanges: "프롬프트",
     changes: "변경사항",
@@ -93,9 +84,6 @@ const MESSAGES: Record<Language, MessageStrings> = {
     added: "추가됨",
     removed: "제거됨",
     modified: "수정됨",
-    counter: "개",
-    noChanges: "없음",
-    majorPrefix: "주요 ",
   },
 };
 
@@ -175,6 +163,31 @@ function extractTextFromBlocks(blocks: KnownBlock[]): string {
   return "Slack notification";
 }
 
+function formatCountsText(summary: ChangeSummary, language: Language): string {
+  const cliCount = summary.cliChanges.length;
+  const flagCount =
+    summary.flagChanges.added.length +
+    summary.flagChanges.removed.length +
+    summary.flagChanges.modified.length;
+  const promptCount = summary.promptChanges.length;
+
+  if (language === "ko") {
+    const cli = cliCount > 0 ? `CLI ${cliCount}건` : "CLI 없음";
+    const flag = flagCount > 0 ? `플래그 ${flagCount}건` : "플래그 없음";
+    const prompt =
+      promptCount > 0
+        ? `주요 프롬프트 변경 ${promptCount}건`
+        : "주요 프롬프트 변경 없음";
+    return `${cli}, ${flag}, ${prompt}.`;
+  }
+
+  const cli = cliCount > 0 ? `${cliCount} CLI` : "no CLI";
+  const flag = flagCount > 0 ? `${flagCount} flag` : "no flag";
+  const prompt =
+    promptCount > 0 ? `${promptCount} major prompt` : "no major prompt";
+  return `${cli}, ${flag}, ${prompt} changes.`;
+}
+
 function buildMainMessageBlocks(
   version: string,
   summary: ChangeSummary,
@@ -184,33 +197,17 @@ function buildMainMessageBlocks(
   const msg = MESSAGES[language];
   const includeThreadHint = options?.includeThreadHint !== false;
 
-  const cliCount = summary.cliChanges.length;
-  const flagCount =
-    summary.flagChanges.added.length +
-    summary.flagChanges.removed.length +
-    summary.flagChanges.modified.length;
-  const promptCount = summary.promptChanges.length;
-
-  const c = msg.counter;
-  const cliPart =
-    cliCount > 0
-      ? `${cliCount}${c} ${msg.cliChanges}`
-      : `${msg.noChanges} ${msg.cliChanges}`;
-  const flagPart =
-    flagCount > 0
-      ? `${flagCount}${c} ${msg.flagChanges}`
-      : `${msg.noChanges} ${msg.flagChanges}`;
-  const promptPart =
-    promptCount > 0
-      ? `${promptCount}${c} ${msg.majorPrefix}${msg.promptChanges}`
-      : `${msg.noChanges} ${msg.majorPrefix}${msg.promptChanges}`;
-  const countsText = `${cliPart}, ${flagPart}, ${promptPart} ${msg.changes}.`;
-
+  const countsText = formatCountsText(summary, language);
   const mainText = `*Claude Code ${version}* ${msg.released}`;
-  const bodyText = includeThreadHint
-    ? `${countsText}\n${msg.detailsInThread}`
-    : countsText;
-  const text = `${mainText}\n${bodyText}`;
+
+  const bodyParts = [countsText];
+  if (summary.summary) {
+    bodyParts.push(summary.summary);
+  }
+  if (includeThreadHint) {
+    bodyParts.push(msg.detailsInThread);
+  }
+  const text = `${mainText}\n${bodyParts.join("\n")}`;
 
   return [
     {
