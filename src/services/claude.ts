@@ -72,7 +72,7 @@ interface ToolDescriptions {
 const TOOL_DESCRIPTIONS: Record<Language, ToolDescriptions> = {
   en: {
     description: "Submit Claude Code changelog summary",
-    summary: "2-3 sentence summary of overall changes",
+    summary: "1-2 sentence concise summary of the most important changes",
     promptChanges: "List of prompt changes (one sentence each)",
     cliChanges: "List of CLI changelog items (one sentence each)",
     flagAdded: "List of newly added feature flags",
@@ -81,7 +81,7 @@ const TOOL_DESCRIPTIONS: Record<Language, ToolDescriptions> = {
   },
   ko: {
     description: "Claude Code 변경 사항 요약을 제출합니다",
-    summary: "전체 변경 사항에 대한 2-3문장 요약",
+    summary: "가장 중요한 변경 사항에 대한 1-2문장 간결 요약",
     promptChanges: "프롬프트 변경 사항 목록 (각 항목은 한 문장)",
     cliChanges: "CLI 변경 사항 목록 (한국어로 번역, 기술 용어는 영어 유지)",
     flagAdded: "새로 추가된 feature flag 목록",
@@ -152,6 +152,7 @@ You are an expert at analyzing Claude Code changes.
 
 <instructions>
   <guideline>Explain technical content in a developer-friendly way</guideline>
+  <guideline>Keep the summary to 1-2 sentences, focused on the most impactful changes</guideline>
   <guideline>Leave empty arrays for categories with no changes</guideline>
   <guideline>Include CLI changes in the cliChanges field as-is</guideline>
   <guideline>Use the submit_changelog_summary tool to submit results</guideline>
@@ -185,6 +186,7 @@ Analyze the changes from {fromVersion} to {toVersion} and provide a summary in E
 
 <instructions>
   <guideline>기술적인 내용을 개발자가 이해하기 쉽게 설명해주세요</guideline>
+  <guideline>요약은 1-2문장으로, 핵심 변경 사항 위주로 간결하게 작성해주세요</guideline>
   <guideline>변경 사항이 없는 카테고리는 빈 배열로 남겨주세요</guideline>
   <guideline>CLI 변경 사항은 한국어로 번역하여 cliChanges 필드에 포함해주세요</guideline>
   <guideline>기술 용어(함수명, 파일명, 설정값 등)는 영어로 유지해주세요</guideline>

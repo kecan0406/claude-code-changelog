@@ -12,7 +12,8 @@ import { GITHUB_DEFAULTS } from "./github.js";
 import { withRetry } from "../utils/retry.js";
 import { deactivateWorkspace } from "../db/workspaces.js";
 
-// Slack error codes that indicate invalid/revoked tokens
+// ===== Constants & Types =====
+
 const TOKEN_INVALID_ERRORS = [
   "invalid_auth",
   "token_revoked",
@@ -21,31 +22,6 @@ const TOKEN_INVALID_ERRORS = [
   "not_authed",
   "missing_scope",
 ] as const;
-
-/**
- * Check if an error indicates the bot token is invalid/revoked
- */
-function isTokenInvalidError(error: unknown): boolean {
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase();
-    return TOKEN_INVALID_ERRORS.some((code) => message.includes(code));
-  }
-
-  // Check for Slack API error format
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "data" in error &&
-    typeof (error as { data: unknown }).data === "object"
-  ) {
-    const data = (error as { data: { error?: string } }).data;
-    if (typeof data?.error === "string") {
-      return TOKEN_INVALID_ERRORS.some((code) => data.error === code);
-    }
-  }
-
-  return false;
-}
 
 interface MessageStrings {
   released: string;
@@ -92,11 +68,96 @@ const REPO_PATHS = {
   CHANGELOG: `${GITHUB_DEFAULTS.UPSTREAM_OWNER}/${GITHUB_DEFAULTS.UPSTREAM_REPO}`,
 } as const;
 
-// Delay between messages to respect Slack rate limits (1 msg/sec/channel for Tier 1)
 const MESSAGE_DELAY_MS = 1100;
+
+const CONCURRENCY_LIMIT = 10;
+
+export interface NotificationResult {
+  workspace: Workspace;
+  success: boolean;
+  error?: Error;
+}
+
+// ===== Low-level Utilities =====
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTokenInvalidError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return TOKEN_INVALID_ERRORS.some((code) => message.includes(code));
+  }
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "data" in error &&
+    typeof (error as { data: unknown }).data === "object"
+  ) {
+    const data = (error as { data: { error?: string } }).data;
+    if (typeof data?.error === "string") {
+      return TOKEN_INVALID_ERRORS.some((code) => data.error === code);
+    }
+  }
+
+  return false;
+}
+
+function extractTextFromBlocks(blocks: KnownBlock[]): string {
+  for (const block of blocks) {
+    if (block.type === "header" && block.text) {
+      return block.text.text;
+    }
+    if (block.type === "section" && block.text) {
+      return block.text.text;
+    }
+  }
+  return "Slack notification";
+}
+
+async function processInBatches<T, R>(
+  items: T[],
+  processor: (item: T) => Promise<R>,
+  concurrency: number,
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = [];
+
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency);
+    const batchResults = await Promise.allSettled(batch.map(processor));
+    results.push(...batchResults);
+  }
+
+  return results;
+}
+
+// ===== Block Builders =====
+
+function formatCountsText(summary: ChangeSummary, language: Language): string {
+  const cliCount = summary.cliChanges.length;
+  const flagCount =
+    summary.flagChanges.added.length +
+    summary.flagChanges.removed.length +
+    summary.flagChanges.modified.length;
+  const promptCount = summary.promptChanges.length;
+
+  if (language === "ko") {
+    const cli = cliCount > 0 ? `CLI ${cliCount}건` : "CLI 없음";
+    const flag = flagCount > 0 ? `플래그 ${flagCount}건` : "플래그 없음";
+    const prompt =
+      promptCount > 0
+        ? `주요 프롬프트 변경 ${promptCount}건`
+        : "주요 프롬프트 변경 없음";
+    return `${cli}, ${flag}, ${prompt}.`;
+  }
+
+  const cli = cliCount > 0 ? `${cliCount} CLI` : "no CLI";
+  const flag = flagCount > 0 ? `${flagCount} flag` : "no flag";
+  const prompt =
+    promptCount > 0 ? `${promptCount} major prompt` : "no major prompt";
+  return `${cli}, ${flag}, ${prompt} changes.`;
 }
 
 interface ReplyBlockConfig {
@@ -131,63 +192,6 @@ function buildReplyBlocks(config: ReplyBlockConfig): KnownBlock[] {
   return blocks;
 }
 
-async function postMessage(
-  client: WebClient,
-  channelId: string,
-  blocks: KnownBlock[],
-  threadTs?: string,
-): Promise<ChatPostMessageResponse> {
-  const textFallback = extractTextFromBlocks(blocks);
-
-  return withRetry(
-    () =>
-      client.chat.postMessage({
-        channel: channelId,
-        blocks,
-        text: textFallback,
-        thread_ts: threadTs,
-      }),
-    { maxAttempts: 3, baseDelayMs: 1000 },
-  );
-}
-
-function extractTextFromBlocks(blocks: KnownBlock[]): string {
-  for (const block of blocks) {
-    if (block.type === "header" && block.text) {
-      return block.text.text;
-    }
-    if (block.type === "section" && block.text) {
-      return block.text.text;
-    }
-  }
-  return "Slack notification";
-}
-
-function formatCountsText(summary: ChangeSummary, language: Language): string {
-  const cliCount = summary.cliChanges.length;
-  const flagCount =
-    summary.flagChanges.added.length +
-    summary.flagChanges.removed.length +
-    summary.flagChanges.modified.length;
-  const promptCount = summary.promptChanges.length;
-
-  if (language === "ko") {
-    const cli = cliCount > 0 ? `CLI ${cliCount}건` : "CLI 없음";
-    const flag = flagCount > 0 ? `플래그 ${flagCount}건` : "플래그 없음";
-    const prompt =
-      promptCount > 0
-        ? `주요 프롬프트 변경 ${promptCount}건`
-        : "주요 프롬프트 변경 없음";
-    return `${cli}, ${flag}, ${prompt}.`;
-  }
-
-  const cli = cliCount > 0 ? `${cliCount} CLI` : "no CLI";
-  const flag = flagCount > 0 ? `${flagCount} flag` : "no flag";
-  const prompt =
-    promptCount > 0 ? `${promptCount} major prompt` : "no major prompt";
-  return `${cli}, ${flag}, ${prompt} changes.`;
-}
-
 function buildMainMessageBlocks(
   version: string,
   summary: ChangeSummary,
@@ -207,7 +211,7 @@ function buildMainMessageBlocks(
   if (includeThreadHint) {
     bodyParts.push(msg.detailsInThread);
   }
-  const text = `${mainText}\n${bodyParts.join("\n")}`;
+  const text = `${mainText}\n\n${bodyParts.join("\n\n")}`;
 
   return [
     {
@@ -279,6 +283,30 @@ function buildFlagReplyBlocks(
     language,
   });
 }
+
+// ===== Message Posting =====
+
+async function postMessage(
+  client: WebClient,
+  channelId: string,
+  blocks: KnownBlock[],
+  threadTs?: string,
+): Promise<ChatPostMessageResponse> {
+  const textFallback = extractTextFromBlocks(blocks);
+
+  return withRetry(
+    () =>
+      client.chat.postMessage({
+        channel: channelId,
+        blocks,
+        text: textFallback,
+        thread_ts: threadTs,
+      }),
+    { maxAttempts: 3, baseDelayMs: 1000 },
+  );
+}
+
+// ===== High-level Orchestration =====
 
 export async function postThreadedChangelog(
   botToken: string,
@@ -423,33 +451,6 @@ export async function sendWelcomeMessage(workspace: Workspace): Promise<void> {
   }
 }
 
-export interface NotificationResult {
-  workspace: Workspace;
-  success: boolean;
-  error?: Error;
-}
-
-const CONCURRENCY_LIMIT = 10;
-
-/**
- * Process items in batches with concurrency limit
- */
-async function processInBatches<T, R>(
-  items: T[],
-  processor: (item: T) => Promise<R>,
-  concurrency: number,
-): Promise<PromiseSettledResult<R>[]> {
-  const results: PromiseSettledResult<R>[] = [];
-
-  for (let i = 0; i < items.length; i += concurrency) {
-    const batch = items.slice(i, i + concurrency);
-    const batchResults = await Promise.allSettled(batch.map(processor));
-    results.push(...batchResults);
-  }
-
-  return results;
-}
-
 export async function sendNotificationToWorkspaces(
   workspaces: Workspace[],
   message: SlackMessage,
@@ -495,12 +496,10 @@ export async function sendNotificationToWorkspaces(
     CONCURRENCY_LIMIT,
   );
 
-  // Extract values from settled results (processor never throws)
   return settledResults.map((result) => {
     if (result.status === "fulfilled") {
       return result.value;
     }
-    // This should never happen since processor catches all errors
     return {
       workspace: { teamId: "unknown", teamName: "unknown" } as Workspace,
       success: false,
