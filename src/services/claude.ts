@@ -6,6 +6,7 @@ import type {
   Language,
 } from "../types/index.js";
 import { logger } from "../utils/logger.js";
+import { validateSummaryLanguage } from "../utils/language.js";
 import { withRetry } from "../utils/retry.js";
 
 const CLAUDE_CONFIG = {
@@ -80,10 +81,14 @@ const TOOL_DESCRIPTIONS: Record<Language, ToolDescriptions> = {
     flagModified: "List of modified feature flags",
   },
   ko: {
-    description: "Claude Code 변경 사항 요약을 제출합니다",
-    summary: "가장 중요한 변경 사항에 대한 1-2문장 간결 요약",
-    promptChanges: "프롬프트 변경 사항 목록 (각 항목은 한 문장)",
-    cliChanges: "CLI 변경 사항 목록 (한국어로 번역, 기술 용어는 영어 유지)",
+    description:
+      "Claude Code 변경 사항 요약을 한국어로 제출합니다. 모든 필드는 반드시 한국어로 작성해야 합니다.",
+    summary:
+      "가장 중요한 변경 사항에 대한 1-2문장 간결 요약 (반드시 한국어로 작성)",
+    promptChanges:
+      "프롬프트 변경 사항 목록 (각 항목은 한국어 한 문장, 기술 용어만 영어 허용)",
+    cliChanges:
+      "CLI 변경 사항 목록 (반드시 한국어로 번역, 기술 용어만 영어 유지)",
     flagAdded: "새로 추가된 feature flag 목록",
     flagRemoved: "제거된 feature flag 목록",
     flagModified: "수정된 feature flag 목록",
@@ -180,8 +185,11 @@ Only include changes that would make Claude behave differently.
 Analyze the changes from {fromVersion} to {toVersion} and provide a summary in English.`,
   },
   ko: {
-    system: `<role>
+    system: `<language>한국어</language>
+
+<role>
 당신은 Claude Code의 변경 사항을 분석하는 전문가입니다.
+모든 출력은 반드시 한국어로 작성해야 합니다.
 </role>
 
 <instructions>
@@ -197,6 +205,11 @@ Analyze the changes from {fromVersion} to {toVersion} and provide a summary in E
 promptChanges = Claude에게 주어지는 지시, 규칙, 동작 정의의 변경.
 매 릴리즈마다 바뀌는 "추출 시점 컨텍스트"는 제외 (버전, 날짜, 타임스탬프, 경로, working directory).
 Claude의 동작이 달라지는 변경만 포함해주세요.
+</critical-rule>
+
+<critical-rule name="output-language">
+summary, promptChanges, cliChanges 필드의 모든 텍스트는 반드시 한국어로 작성하세요.
+영어로 작성하면 안 됩니다. 기술 용어(함수명, 파일명, 설정값, flag 이름)만 영어를 허용합니다.
 </critical-rule>`,
 
     user: `<context>
@@ -212,7 +225,15 @@ Claude의 동작이 달라지는 변경만 포함해주세요.
 {cliChanges}
 </cli-changelog>
 
-{fromVersion}에서 {toVersion}으로의 변경 사항을 분석하여 한국어로 요약해주세요.`,
+<example>
+다음은 올바른 한국어 출력 예시입니다:
+- summary: "컨텍스트 프로토콜 처리 개선 및 메모리 관리 최적화가 적용되었습니다."
+- promptChanges: ["tool_use 응답에서 JSON 파싱 규칙이 강화되었습니다", "코드 생성 시 보안 검증 단계가 추가되었습니다"]
+- cliChanges: ["--max-tokens 플래그의 기본값이 4096으로 변경되었습니다", "새로운 --output-format 옵션이 추가되었습니다"]
+위의 예시처럼 모든 필드를 반드시 한국어로 작성해주세요.
+</example>
+
+{fromVersion}에서 {toVersion}으로의 변경 사항을 분석하여 반드시 한국어로 요약해주세요.`,
   },
 };
 
@@ -330,6 +351,12 @@ export async function generateSummary(
     if (!parsed) {
       logger.error("Invalid tool input structure", { input: toolUse.input });
       throw new Error("Tool input does not match expected structure");
+    }
+
+    if (!validateSummaryLanguage(parsed, language)) {
+      logger.warn(
+        `Summary language mismatch: expected ${language}, content may not match`,
+      );
     }
 
     logger.info("Summary generated successfully");

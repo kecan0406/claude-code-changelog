@@ -1,5 +1,6 @@
 import { getRedis, KeyPrefix, buildKey } from "../db/redis.js";
 import { logger } from "../utils/logger.js";
+import { validateSummaryLanguage } from "../utils/language.js";
 import type { ChangeSummary, Language } from "../types/index.js";
 
 const CACHE_DEFAULTS = {
@@ -38,6 +39,11 @@ export class SummaryCache {
       const cached = await redis.get<ChangeSummary>(key);
 
       if (cached) {
+        if (!validateSummaryLanguage(cached, language)) {
+          logger.warn(`Cache pollution detected for ${key}, deleting`);
+          await redis.del(key);
+          return null;
+        }
         logger.debug(`Cache hit: ${key}`);
         return cached;
       }
@@ -58,6 +64,13 @@ export class SummaryCache {
     if (!hasSubstantialContent(summary)) {
       logger.warn(
         `Skipping cache for ${version}:${language} - no substantial content`,
+      );
+      return;
+    }
+
+    if (!validateSummaryLanguage(summary, language)) {
+      logger.warn(
+        `Skipping cache for ${version}:${language} - language mismatch`,
       );
       return;
     }
