@@ -100,7 +100,15 @@ export class SummaryCache {
       for (let i = 0; i < values.length; i++) {
         const value = values[i];
         if (value) {
-          results.set(SUPPORTED_LANGUAGES[i], value);
+          const lang = SUPPORTED_LANGUAGES[i];
+          if (validateSummaryLanguage(value, lang)) {
+            results.set(lang, value);
+          } else {
+            logger.warn(
+              `Cache pollution detected in getAll for ${keys[i]}, deleting`,
+            );
+            await redis.del(keys[i]);
+          }
         }
       }
     } catch (error) {
@@ -139,8 +147,17 @@ export class SummaryCache {
       try {
         const summary = await generateFn(lang);
         await this.set(version, lang, summary);
-        results.set(lang, summary);
-        logger.info(`Generated and cached summary for ${version}:${lang}`);
+
+        // Only add to results if language validation passes
+        // (set() may silently skip caching on language mismatch)
+        if (validateSummaryLanguage(summary, lang)) {
+          results.set(lang, summary);
+          logger.info(`Generated and cached summary for ${version}:${lang}`);
+        } else {
+          logger.warn(
+            `Generated summary for ${version}:${lang} failed language validation, excluded from results`,
+          );
+        }
       } catch (error) {
         logger.error(
           `Failed to generate summary for ${version}:${lang}`,

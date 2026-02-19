@@ -353,18 +353,52 @@ export async function generateSummary(
       throw new Error("Tool input does not match expected structure");
     }
 
-    if (!validateSummaryLanguage(parsed, language)) {
-      logger.warn(
-        `Summary language mismatch: expected ${language}, content may not match`,
+    if (validateSummaryLanguage(parsed, language)) {
+      logger.info("Summary generated successfully");
+      return { version: diff.toVersion, ...parsed };
+    }
+
+    // Language validation failed - retry once with reinforced prompt
+    logger.warn(
+      `Summary language mismatch for ${language}, retrying with reinforced prompt`,
+    );
+
+    const retryResponse = await withRetry(
+      () =>
+        client.messages.create({
+          model: CLAUDE_CONFIG.MODEL,
+          max_tokens: CLAUDE_CONFIG.MAX_TOKENS,
+          system:
+            template.system +
+            "\n\n<critical-rule>Previous attempt produced wrong language output. You MUST write ALL content in the requested language.</critical-rule>",
+          messages: [{ role: "user", content: userMessage }],
+          tools: [createSummaryTool(language)],
+          tool_choice: { type: "tool", name: "submit_changelog_summary" },
+        }),
+      { maxAttempts: 2, baseDelayMs: 2000 },
+    );
+
+    const retryToolUse = retryResponse.content.find(
+      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
+    );
+
+    if (!retryToolUse) {
+      throw new Error("No tool use response from Claude on retry");
+    }
+
+    const retryParsed = normalizeParsedSummary(retryToolUse.input, cliChanges);
+    if (!retryParsed) {
+      throw new Error("Invalid tool input structure on retry");
+    }
+
+    if (!validateSummaryLanguage(retryParsed, language)) {
+      throw new Error(
+        `Summary language validation failed for ${language} after retry`,
       );
     }
 
-    logger.info("Summary generated successfully");
-
-    return {
-      version: diff.toVersion,
-      ...parsed,
-    };
+    logger.info("Summary generated successfully on retry");
+    return { version: diff.toVersion, ...retryParsed };
   } catch (error) {
     logger.error("Failed to generate summary", error);
     throw error;

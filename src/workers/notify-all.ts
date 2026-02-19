@@ -210,6 +210,11 @@ async function executeNotification(): Promise<void> {
     logger.warn("English summary not available, using fallback");
   }
 
+  // Claim version before sending notifications (claim-first pattern)
+  // Prevents duplicate notifications if the process crashes during delivery.
+  // Failed deliveries are tracked per-workspace via addFailedWorkspace and retried independently.
+  await setLastCheckedVersion(latestTag.name);
+
   // Send notifications to all workspaces
   const results = await sendNotificationToWorkspaces(
     workspaces,
@@ -265,8 +270,7 @@ async function executeNotification(): Promise<void> {
     }
   }
 
-  // Update last checked version and notification time
-  await setLastCheckedVersion(latestTag.name);
+  // Record notification completion time
   await setLastNotificationTime();
 
   logger.info("Notification completed successfully");

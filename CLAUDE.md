@@ -4,131 +4,81 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Claude Code Changelog Bot - Multi-workspace Slack notification bot that monitors the `marckrenn/claude-code-changelog` repository for new releases and sends formatted notifications to multiple Slack workspaces. Uses Claude API to generate intelligent summaries in English and Korean.
+Claude Code Changelog Bot - Multi-workspace Slack notification bot that monitors two GitHub repositories for Claude Code release changes and sends formatted notifications to multiple Slack workspaces. Uses Claude API to generate intelligent summaries in English and Korean.
 
 ## Commands
 
 ```bash
-# Build TypeScript
-pnpm run build
-
-# Run the notification check (main entry point)
-pnpm run notify
-
-# Type checking only
-pnpm run typecheck
+pnpm run build       # Build TypeScript
+pnpm run notify      # Run the notification check (main entry point)
+pnpm run typecheck   # Type checking only
 ```
 
 ## Architecture
 
-```
-src/
-  index.ts              # Entry point: runs multi-workspace notification
-  config/
-    index.ts            # Environment variable validation and config loading (singleton)
-  types/
-    index.ts            # Core interfaces (TagInfo, ChangelogDiff, ChangeSummary)
-    database.ts         # DB types (Workspace, CreateWorkspaceInput, UpdateWorkspaceInput)
-  services/
-    github.ts           # GitHub API: fetch tags, compare commits, get file content, CLI changelog
-    claude.ts           # Anthropic API: generate summaries (en/ko) with XML prompts
-    slack.ts            # Slack notifications: workspace-based threaded messages with rate limiting
-  db/
-    index.ts            # DB module exports
-    redis.ts            # Upstash Redis client, distributed locks (SET NX EX + Lua)
-    workspaces.ts       # Workspace CRUD with encrypted token storage
-    state.ts            # Global state (last_checked_version, failed notifications tracking)
-    metrics.ts          # Notification metrics (success/failure counts, timestamps)
-  cache/
-    index.ts            # Cache module exports
-    summary-cache.ts    # Summary cache (Redis-backed, 7-day TTL)
-  workers/
-    notify-all.ts       # Multi-workspace notification orchestrator with retry logic
-  utils/
-    crypto.ts           # AES-256-GCM encryption for bot tokens
-    logger.ts           # Console logger with sensitive data masking
-    retry.ts            # Exponential backoff with jitter retry utility
-    slack-verify.ts     # Slack request signature verification (HMAC-SHA256)
+### Dual Execution Contexts
 
-api/oauth/              # Vercel API routes (OAuth installation)
-  install.ts            # OAuth install redirect with language selection
-  callback.ts           # OAuth callback handler with welcome message
-api/cron/               # Vercel API routes (Scheduled tasks)
-  notify.ts             # Manual notification trigger endpoint (requires CRON_SECRET)
-api/slack/              # Vercel API routes (Slack interactions)
-  commands.ts           # Slash command handler (/changelog-lang)
-```
+The project runs in two distinct modes:
 
-## Key Behaviors
+1. **CLI / GitHub Actions** (`src/index.ts` -> `workers/notify-all.ts`): Scheduled hourly via GitHub Actions (`.github/workflows/changelog-notify.yml`). Acquires a distributed lock, checks for new versions, pre-generates summaries for all languages, and batch-sends to all workspaces.
 
-- Monitors `cc-prompt.md` and `cc-flags.md` files for changes
-- Fetches Claude Code CLI changelog from `anthropics/claude-code` repository
-- Uses Claude Haiku 4.5 to generate summaries in English or Korean
-- Single-tier storage using Upstash Redis
-- OAuth-based workspace installation
+2. **Vercel Serverless** (`api/`): Handles OAuth installation (`api/oauth/`), Slack slash commands (`api/slack/commands.ts` for `/changelog-lang`, `api/slack/changelog.ts` for `/changelog`), and manual triggers (`api/cron/notify.ts`). Functions are constrained to 256MB memory and 30s max duration (`vercel.json`).
 
-### Operational Stability
+### Dual Source Monitoring
 
-- **Distributed Locks**: Redis SET NX EX + Lua script prevents race conditions
-- **Retry Logic**: Exponential backoff with jitter for transient failures (max 3 retries)
-- **Failed Notification Tracking**: Auto-retry on next run (7-day TTL)
-- **Rate Limiting**: 1.1s delay between Slack messages, concurrency limit of 10
+The bot monitors two separate GitHub repositories:
+
+- **`marckrenn/claude-code-changelog`**: Tracks `cc-prompt.md` (system prompt) and `cc-flags.md` (feature flags) changes between version tags. Changes are fetched via GitHub compare API.
+- **`anthropics/claude-code`**: Fetches CLI changelog (`CHANGELOG.md`) for the corresponding version section.
+
+Both are merged into a single `ChangeSummary` for each notification.
+
+### AI Summary Generation (`services/claude.ts`)
+
+Uses Claude Haiku 4.5 with `tool_use` for structured output. The `submit_changelog_summary` tool forces the model to return a typed `ChangeSummary` object. Prompt templates and tool descriptions are defined per-language (en/ko) with XML-formatted input. Korean output is validated via Hangul character ratio check (`utils/language.ts`).
+
+### Notification Flow (`services/slack.ts`)
+
+Notifications are posted as threaded Slack messages: main message with version + AI summary, then thread replies for CLI changes, flag changes, and prompt changes. Rate limited at 1.1s between messages, with 10-workspace concurrency batching.
+
+### Caching & State
+
+- **Summary Cache** (`cache/summary-cache.ts`): Redis-backed, 7-day TTL, keyed by `{version}:{language}`. Pre-generated during notification runs, consumed by slash commands and retries.
+- **Global State** (`db/state.ts`): `last_checked_version` tracks the latest processed version. Failed notifications are tracked per-workspace with retry counts (max 3, 7-day TTL).
+- **Distributed Lock** (`db/redis.ts`): `SET NX EX` + Lua script `EVAL` for atomic release. Prevents concurrent notification runs.
 
 ### Security
 
-- **Token Encryption**: AES-256-GCM for bot token storage
-- **Sensitive Data Masking**: Auto-masks tokens/secrets in logs
-- **Token Invalidation Detection**: Auto-deactivates workspaces with invalid tokens
+- Bot tokens stored with AES-256-GCM encryption (`utils/crypto.ts`)
+- Logger auto-masks tokens/secrets in output (`utils/logger.ts`)
+- Invalid tokens trigger automatic workspace deactivation
 
 ## Environment Variables
 
-| Variable                   | Required | Description                                    |
-| -------------------------- | -------- | ---------------------------------------------- |
-| `UPSTASH_REDIS_REST_URL`   | Yes      | Upstash Redis REST URL                         |
-| `UPSTASH_REDIS_REST_TOKEN` | Yes      | Upstash Redis REST token                       |
-| `SLACK_CLIENT_ID`          | Yes      | Slack App client ID                            |
-| `SLACK_CLIENT_SECRET`      | Yes      | Slack App client secret                        |
+| Variable                   | Required | Description                                     |
+| -------------------------- | -------- | ----------------------------------------------- |
+| `UPSTASH_REDIS_REST_URL`   | Yes      | Upstash Redis REST URL                          |
+| `UPSTASH_REDIS_REST_TOKEN` | Yes      | Upstash Redis REST token                        |
+| `SLACK_CLIENT_ID`          | Yes      | Slack App client ID                             |
+| `SLACK_CLIENT_SECRET`      | Yes      | Slack App client secret                         |
 | `ENCRYPTION_KEY`           | Yes      | 64-char hex key (32 bytes) for token encryption |
-| `ANTHROPIC_API_KEY`        | Yes      | Anthropic API key                              |
-| `SLACK_SIGNING_SECRET`     | No*      | Slack App signing secret (required for slash commands) |
-| `CRON_SECRET`              | No*      | Secret for Vercel cron/manual trigger auth     |
-| `GITHUB_TOKEN`             | No       | GitHub token (increases rate limit)            |
-| `UPSTREAM_OWNER`           | No       | GitHub owner (default: `marckrenn`)            |
-| `UPSTREAM_REPO`            | No       | GitHub repo (default: `claude-code-changelog`) |
-| `CLI_REPO_OWNER`           | No       | CLI repo owner (default: `anthropics`)         |
-| `CLI_REPO_NAME`            | No       | CLI repo name (default: `claude-code`)         |
+| `ANTHROPIC_API_KEY`        | Yes      | Anthropic API key                               |
+| `SLACK_SIGNING_SECRET`     | No\*     | Required for slash commands                     |
+| `CRON_SECRET`              | No\*     | Required for Vercel cron/manual trigger auth    |
+| `GITHUB_TOKEN`             | No       | Increases rate limit from 60/hr to 5000/hr      |
 
 ## Database
 
-Uses **Upstash Redis** only (serverless key-value store via Vercel Marketplace).
+Uses **Upstash Redis** only (serverless key-value store).
 
 ### Redis Key Structure
 
-| Key Pattern                      | Type   | TTL       | Description                         |
-| -------------------------------- | ------ | --------- | ----------------------------------- |
-| `workspace:{teamId}`             | String | Permanent | Workspace data (JSON)               |
-| `workspaces:active`              | Set    | Permanent | Active workspace teamIds            |
-| `summary:{version}:{language}`   | String | 7 days    | Cached AI summaries                 |
-| `state:{key}`                    | String | Permanent | Global state values                 |
-| `state:failed:{teamId}`          | String | 7 days    | Failed notification tracking        |
-| `lock:{name}`                    | String | 300s      | Distributed lock (UUID value)       |
-| `metrics:{key}`                  | String | Permanent | Notification run metrics            |
-
-## Workflow
-
-```
-User installs bot
-  -> /api/oauth/install (OAuth start with language selection)
-  -> User authorizes
-  -> /api/oauth/callback (Workspace creation + welcome message)
-
-Notification run (scheduled or triggered)
-  -> Acquire distributed lock
-  -> Retry previously failed notifications
-  -> Check for new version
-  -> Fetch changes (GitHub diffs + CLI changelog)
-  -> Pre-generate summaries (Claude, cache-aware)
-  -> Send to all workspaces (batch with concurrency limit)
-  -> Record metrics and failures
-  -> Release lock
-```
+| Key Pattern                    | Type   | TTL       | Description                   |
+| ------------------------------ | ------ | --------- | ----------------------------- |
+| `workspace:{teamId}`           | String | Permanent | Workspace data (JSON)         |
+| `workspaces:active`            | Set    | Permanent | Active workspace teamIds      |
+| `summary:{version}:{language}` | String | 7 days    | Cached AI summaries           |
+| `state:{key}`                  | String | Permanent | Global state values           |
+| `state:failed:{teamId}`        | String | 7 days    | Failed notification tracking  |
+| `lock:{name}`                  | String | 300s      | Distributed lock (UUID value) |
+| `metrics:{key}`                | String | Permanent | Notification run metrics      |
