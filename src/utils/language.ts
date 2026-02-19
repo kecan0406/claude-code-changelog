@@ -22,7 +22,7 @@ function validateArrayKorean(items: string[]): boolean {
 }
 
 export function validateSummaryLanguage(
-  summary: Pick<ChangeSummary, "summary" | "cliChanges" | "promptChanges">,
+  summary: Pick<ChangeSummary, "summary" | "cliChanges">,
   language: Language,
 ): boolean {
   if (language === "en") return true;
@@ -30,7 +30,6 @@ export function validateSummaryLanguage(
   if (!containsKorean(summary.summary)) return false;
 
   if (!validateArrayKorean(summary.cliChanges)) return false;
-  if (!validateArrayKorean(summary.promptChanges)) return false;
 
   return true;
 }

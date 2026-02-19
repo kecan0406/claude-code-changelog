@@ -16,8 +16,6 @@ export interface AppConfig {
   anthropicApiKey: string;
 
   // GitHub (with defaults)
-  upstreamOwner: string;
-  upstreamRepo: string;
   cliRepoOwner: string;
   cliRepoName: string;
 
@@ -36,18 +34,38 @@ interface EnvValidation {
 }
 
 const ENV_VALIDATIONS: EnvValidation[] = [
-  { key: "upstashRedisRestUrl", envVar: "UPSTASH_REDIS_REST_URL", required: true },
-  { key: "upstashRedisRestToken", envVar: "UPSTASH_REDIS_REST_TOKEN", required: true },
+  {
+    key: "upstashRedisRestUrl",
+    envVar: "UPSTASH_REDIS_REST_URL",
+    required: true,
+  },
+  {
+    key: "upstashRedisRestToken",
+    envVar: "UPSTASH_REDIS_REST_TOKEN",
+    required: true,
+  },
   { key: "slackClientId", envVar: "SLACK_CLIENT_ID", required: true },
   { key: "slackClientSecret", envVar: "SLACK_CLIENT_SECRET", required: true },
   { key: "encryptionKey", envVar: "ENCRYPTION_KEY", required: true },
   { key: "anthropicApiKey", envVar: "ANTHROPIC_API_KEY", required: true },
-  { key: "upstreamOwner", envVar: "UPSTREAM_OWNER", required: false, defaultValue: GITHUB_DEFAULTS.UPSTREAM_OWNER },
-  { key: "upstreamRepo", envVar: "UPSTREAM_REPO", required: false, defaultValue: GITHUB_DEFAULTS.UPSTREAM_REPO },
-  { key: "cliRepoOwner", envVar: "CLI_REPO_OWNER", required: false, defaultValue: GITHUB_DEFAULTS.CLI_REPO_OWNER },
-  { key: "cliRepoName", envVar: "CLI_REPO_NAME", required: false, defaultValue: GITHUB_DEFAULTS.CLI_REPO_NAME },
+  {
+    key: "cliRepoOwner",
+    envVar: "CLI_REPO_OWNER",
+    required: false,
+    defaultValue: GITHUB_DEFAULTS.CLI_REPO_OWNER,
+  },
+  {
+    key: "cliRepoName",
+    envVar: "CLI_REPO_NAME",
+    required: false,
+    defaultValue: GITHUB_DEFAULTS.CLI_REPO_NAME,
+  },
   { key: "githubToken", envVar: "GITHUB_TOKEN", required: false },
-  { key: "slackSigningSecret", envVar: "SLACK_SIGNING_SECRET", required: false },
+  {
+    key: "slackSigningSecret",
+    envVar: "SLACK_SIGNING_SECRET",
+    required: false,
+  },
 ];
 
 let cachedConfig: AppConfig | null = null;

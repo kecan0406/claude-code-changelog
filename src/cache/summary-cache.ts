@@ -14,13 +14,7 @@ function summaryKey(version: string, language: Language): string {
 }
 
 function hasSubstantialContent(summary: ChangeSummary): boolean {
-  return (
-    summary.cliChanges.length > 0 ||
-    summary.promptChanges.length > 0 ||
-    summary.flagChanges.added.length > 0 ||
-    summary.flagChanges.removed.length > 0 ||
-    summary.flagChanges.modified.length > 0
-  );
+  return summary.cliChanges.length > 0;
 }
 
 export interface SummaryCacheOptions {

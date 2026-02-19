@@ -1,13 +1,9 @@
 import { Octokit } from "@octokit/rest";
-import type { TagInfo, ChangelogDiff, FileDiff } from "../types/index.js";
+import type { TagInfo } from "../types/index.js";
 import { logger } from "../utils/logger.js";
 import { withRetry } from "../utils/retry.js";
 
-const TARGET_FILES = ["cc-prompt.md", "cc-flags.md"];
-
 export const GITHUB_DEFAULTS = {
-  UPSTREAM_OWNER: "marckrenn",
-  UPSTREAM_REPO: "claude-code-changelog",
   CLI_REPO_OWNER: "anthropics",
   CLI_REPO_NAME: "claude-code",
 } as const;
@@ -29,125 +25,35 @@ export function _resetOctokitClient(): void {
 }
 
 export interface GitHubConfig {
-  upstreamOwner: string;
-  upstreamRepo: string;
   cliRepoOwner: string;
   cliRepoName: string;
 }
 
-export async function getLatestTag(
-  config: Pick<GitHubConfig, "upstreamOwner" | "upstreamRepo">,
+export async function getLatestRelease(
+  config: Pick<GitHubConfig, "cliRepoOwner" | "cliRepoName">,
 ): Promise<TagInfo | null> {
   const octokit = getOctokit();
 
   return withRetry(async () => {
     try {
-      const { data: tags } = await octokit.repos.listTags({
-        owner: config.upstreamOwner,
-        repo: config.upstreamRepo,
-        per_page: 1,
+      const { data: release } = await octokit.repos.getLatestRelease({
+        owner: config.cliRepoOwner,
+        repo: config.cliRepoName,
       });
-
-      if (tags.length === 0) {
-        logger.warn("No tags found in repository");
+      return {
+        name: release.tag_name,
+        commitSha: release.target_commitish,
+        date: release.published_at || new Date().toISOString(),
+      };
+    } catch (error) {
+      if ((error as { status?: number }).status === 404) {
+        logger.warn("No releases found in repository");
         return null;
       }
-
-      const tag = tags[0];
-
-      const { data: commit } = await octokit.repos.getCommit({
-        owner: config.upstreamOwner,
-        repo: config.upstreamRepo,
-        ref: tag.commit.sha,
-      });
-
-      return {
-        name: tag.name,
-        commitSha: tag.commit.sha,
-        date: commit.commit.committer?.date || new Date().toISOString(),
-      };
-    } catch (error) {
-      logger.error("Failed to fetch latest tag", error);
+      logger.error("Failed to fetch latest release", error);
       throw error;
     }
   });
-}
-
-export async function getChangelogDiff(
-  config: Pick<GitHubConfig, "upstreamOwner" | "upstreamRepo">,
-  fromVersion: string,
-  toVersion: string,
-): Promise<ChangelogDiff> {
-  const octokit = getOctokit();
-
-  return withRetry(async () => {
-    try {
-      const { data: comparison } = await octokit.repos.compareCommits({
-        owner: config.upstreamOwner,
-        repo: config.upstreamRepo,
-        base: fromVersion,
-        head: toVersion,
-      });
-
-      const relevantFiles = (comparison.files ?? [])
-        .filter((file: { filename: string }) =>
-          TARGET_FILES.includes(file.filename),
-        )
-        .map(
-          (file: {
-            filename: string;
-            patch?: string;
-            additions: number;
-            deletions: number;
-          }): FileDiff => ({
-            filename: file.filename,
-            patch: file.patch || "",
-            additions: file.additions ?? 0,
-            deletions: file.deletions ?? 0,
-          }),
-        );
-
-      const compareUrl = `https://github.com/${config.upstreamOwner}/${config.upstreamRepo}/compare/${fromVersion}...${toVersion}`;
-
-      logger.info(`Found ${relevantFiles.length} relevant file changes`);
-
-      return {
-        fromVersion,
-        toVersion,
-        files: relevantFiles,
-        compareUrl,
-      };
-    } catch (error) {
-      logger.error("Failed to fetch changelog diff", error);
-      throw error;
-    }
-  });
-}
-
-export async function getFileContent(
-  config: Pick<GitHubConfig, "upstreamOwner" | "upstreamRepo">,
-  version: string,
-  filename: string,
-): Promise<string> {
-  const octokit = getOctokit();
-
-  try {
-    const { data } = await octokit.repos.getContent({
-      owner: config.upstreamOwner,
-      repo: config.upstreamRepo,
-      path: filename,
-      ref: version,
-    });
-
-    if ("content" in data && data.encoding === "base64") {
-      return Buffer.from(data.content, "base64").toString("utf-8");
-    }
-
-    throw new Error(`Unexpected response format for ${filename}`);
-  } catch (error) {
-    logger.error(`Failed to fetch ${filename} at ${version}`, error);
-    throw error;
-  }
 }
 
 export interface CliChangelogResult {

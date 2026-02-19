@@ -1,6 +1,5 @@
 import {
-  getLatestTag,
-  getChangelogDiff,
+  getLatestRelease,
   getCliChangelog,
   findPreviousTag,
   GITHUB_DEFAULTS,
@@ -24,11 +23,9 @@ import {
 } from "../db/index.js";
 import { recordNotificationMetrics, recordError } from "../db/metrics.js";
 import { logger } from "../utils/logger.js";
-import type { ChangelogDiff, Language, ChangeSummary } from "../types/index.js";
+import type { Language, ChangeSummary } from "../types/index.js";
 
 export interface MultiWorkspaceConfig {
-  upstreamOwner: string;
-  upstreamRepo: string;
   cliRepoOwner: string;
   cliRepoName: string;
   anthropicApiKey: string;
@@ -42,8 +39,6 @@ function loadMultiWorkspaceConfig(): MultiWorkspaceConfig {
   }
 
   return {
-    upstreamOwner: process.env.UPSTREAM_OWNER || GITHUB_DEFAULTS.UPSTREAM_OWNER,
-    upstreamRepo: process.env.UPSTREAM_REPO || GITHUB_DEFAULTS.UPSTREAM_REPO,
     cliRepoOwner: GITHUB_DEFAULTS.CLI_REPO_OWNER,
     cliRepoName: GITHUB_DEFAULTS.CLI_REPO_NAME,
     anthropicApiKey,
@@ -105,31 +100,31 @@ async function executeNotification(): Promise<void> {
   // Retry previously failed notifications first
   await retryPreviouslyFailedNotifications();
 
-  // Get latest tag
-  const latestTag = await getLatestTag({
-    upstreamOwner: config.upstreamOwner,
-    upstreamRepo: config.upstreamRepo,
+  // Get latest release
+  const latestRelease = await getLatestRelease({
+    cliRepoOwner: config.cliRepoOwner,
+    cliRepoName: config.cliRepoName,
   });
 
-  if (!latestTag) {
-    logger.info("No tags found, exiting");
+  if (!latestRelease) {
+    logger.info("No releases found, exiting");
     return;
   }
 
-  logger.info(`Latest tag: ${latestTag.name}`);
+  logger.info(`Latest release: ${latestRelease.name}`);
 
   // Check if this is a new version (using DB state)
   const lastCheckedVersion = await getLastCheckedVersion();
 
-  if (!isNewerVersion(latestTag.name, lastCheckedVersion)) {
+  if (!isNewerVersion(latestRelease.name, lastCheckedVersion)) {
     logger.info(
-      `No new version. Current: ${latestTag.name}, Last checked: ${lastCheckedVersion}`,
+      `No new version. Current: ${latestRelease.name}, Last checked: ${lastCheckedVersion}`,
     );
     return;
   }
 
   logger.info(
-    `New version detected: ${lastCheckedVersion || "none"} -> ${latestTag.name}`,
+    `New version detected: ${lastCheckedVersion || "none"} -> ${latestRelease.name}`,
   );
 
   // Get active workspaces
@@ -137,23 +132,14 @@ async function executeNotification(): Promise<void> {
 
   if (workspaces.length === 0) {
     logger.info("No active workspaces found");
-    await setLastCheckedVersion(latestTag.name);
+    await setLastCheckedVersion(latestRelease.name);
     return;
   }
 
   logger.info(`Found ${workspaces.length} active workspace(s)`);
 
-  // Get changelog diff
-  const fromVersion = lastCheckedVersion || findPreviousTag(latestTag.name);
-
-  const diff = await getChangelogDiff(
-    {
-      upstreamOwner: config.upstreamOwner,
-      upstreamRepo: config.upstreamRepo,
-    },
-    fromVersion,
-    latestTag.name,
-  );
+  // Get CLI changelog
+  const fromVersion = lastCheckedVersion || findPreviousTag(latestRelease.name);
 
   let cliResult: { changes: string[]; compareUrl: string };
   try {
@@ -162,29 +148,28 @@ async function executeNotification(): Promise<void> {
         cliRepoOwner: config.cliRepoOwner,
         cliRepoName: config.cliRepoName,
       },
-      latestTag.name,
+      latestRelease.name,
     );
   } catch {
     logger.warn(
-      `CLI changelog fetch failed for ${latestTag.name}, proceeding without CLI data`,
+      `CLI changelog fetch failed for ${latestRelease.name}, proceeding without CLI data`,
     );
     cliResult = { changes: [], compareUrl: "" };
   }
 
-  const hasPromptOrFlagChanges = diff.files.length > 0;
   const hasCliChanges = cliResult.changes.length > 0;
 
-  if (!hasPromptOrFlagChanges && !hasCliChanges) {
-    logger.info("No relevant changes found (CLI, prompt, or flag)");
-    await setLastCheckedVersion(latestTag.name);
+  if (!hasCliChanges) {
+    logger.info("No relevant CLI changes found");
+    await setLastCheckedVersion(latestRelease.name);
     return;
   }
 
   // Pre-generate summaries for all languages
   const summariesByLanguage = await pregenerateSummaries(
     config.anthropicApiKey,
-    latestTag.name,
-    diff,
+    latestRelease.name,
+    fromVersion,
     cliResult.changes,
   );
 
@@ -213,15 +198,14 @@ async function executeNotification(): Promise<void> {
   // Claim version before sending notifications (claim-first pattern)
   // Prevents duplicate notifications if the process crashes during delivery.
   // Failed deliveries are tracked per-workspace via addFailedWorkspace and retried independently.
-  await setLastCheckedVersion(latestTag.name);
+  await setLastCheckedVersion(latestRelease.name);
 
   // Send notifications to all workspaces
   const results = await sendNotificationToWorkspaces(
     workspaces,
     {
-      version: latestTag.name,
+      version: latestRelease.name,
       summary: placeholderSummary,
-      compareUrl: diff.compareUrl,
       cliCompareUrl: cliResult.compareUrl,
     },
     summariesByLanguage,
@@ -248,7 +232,7 @@ async function executeNotification(): Promise<void> {
     try {
       await addFailedWorkspace({
         teamId: result.workspace.teamId,
-        version: latestTag.name,
+        version: latestRelease.name,
         reason: result.error?.message || "Unknown error",
         timestamp: new Date().toISOString(),
         retryCount: 0,
@@ -319,10 +303,8 @@ async function retryPreviouslyFailedNotifications(): Promise<void> {
       continue;
     }
 
-    // Build compare URLs for this version
-    const config = loadMultiWorkspaceConfig();
-    const compareUrl = `https://github.com/${config.upstreamOwner}/${config.upstreamRepo}/compare/${version}`;
-    const cliCompareUrl = `https://github.com/${config.cliRepoOwner}/${config.cliRepoName}/releases/tag/${version}`;
+    // Build compare URL for this version
+    const cliCompareUrl = `https://github.com/${GITHUB_DEFAULTS.CLI_REPO_OWNER}/${GITHUB_DEFAULTS.CLI_REPO_NAME}/releases/tag/${version}`;
 
     for (const failed of failures) {
       if (failed.retryCount >= MAX_RETRIES) {
@@ -363,7 +345,6 @@ async function retryPreviouslyFailedNotifications(): Promise<void> {
         await sendWorkspaceNotification(workspace, {
           version,
           summary: effectiveSummary,
-          compareUrl,
           cliCompareUrl,
         });
 
@@ -386,11 +367,11 @@ async function retryPreviouslyFailedNotifications(): Promise<void> {
 async function pregenerateSummaries(
   apiKey: string,
   version: string,
-  diff: ChangelogDiff,
+  fromVersion: string,
   cliChanges: string[],
 ): Promise<Map<Language, ChangeSummary>> {
   const generateFn = async (language: Language): Promise<ChangeSummary> => {
-    return generateSummary(apiKey, language, diff, cliChanges);
+    return generateSummary(apiKey, language, fromVersion, version, cliChanges);
   };
 
   return summaryCache.pregenerate(version, generateFn);

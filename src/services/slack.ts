@@ -25,48 +25,27 @@ const TOKEN_INVALID_ERRORS = [
 
 interface MessageStrings {
   released: string;
-  flagChanges: string;
-  promptChanges: string;
-  changes: string;
   changelog: string;
   detailsInThread: string;
   viewDiff: string;
-  added: string;
-  removed: string;
-  modified: string;
 }
 
 const MESSAGES: Record<Language, MessageStrings> = {
   en: {
     released: "is out.",
-    flagChanges: "flag",
-    promptChanges: "prompt",
-    changes: "changes",
     changelog: "changelog",
     detailsInThread: "Details in thread",
     viewDiff: "Diff",
-    added: "Added",
-    removed: "Removed",
-    modified: "Modified",
   },
   ko: {
     released: "버전이 출시되었습니다.",
-    flagChanges: "플래그",
-    promptChanges: "프롬프트",
-    changes: "변경사항",
     changelog: "변경사항",
     detailsInThread: "자세한 내용은 스레드에서 확인하세요",
     viewDiff: "Diff",
-    added: "추가됨",
-    removed: "제거됨",
-    modified: "수정됨",
   },
 };
 
-const REPO_PATHS = {
-  CLI: `${GITHUB_DEFAULTS.CLI_REPO_OWNER}/${GITHUB_DEFAULTS.CLI_REPO_NAME}`,
-  CHANGELOG: `${GITHUB_DEFAULTS.UPSTREAM_OWNER}/${GITHUB_DEFAULTS.UPSTREAM_REPO}`,
-} as const;
+const REPO_PATH = `${GITHUB_DEFAULTS.CLI_REPO_OWNER}/${GITHUB_DEFAULTS.CLI_REPO_NAME}`;
 
 const MESSAGE_DELAY_MS = 1100;
 
@@ -137,27 +116,12 @@ async function processInBatches<T, R>(
 
 function formatCountsText(summary: ChangeSummary, language: Language): string {
   const cliCount = summary.cliChanges.length;
-  const flagCount =
-    summary.flagChanges.added.length +
-    summary.flagChanges.removed.length +
-    summary.flagChanges.modified.length;
-  const promptCount = summary.promptChanges.length;
 
   if (language === "ko") {
-    const cli = cliCount > 0 ? `CLI ${cliCount}건` : "CLI 없음";
-    const flag = flagCount > 0 ? `플래그 ${flagCount}건` : "플래그 없음";
-    const prompt =
-      promptCount > 0
-        ? `주요 프롬프트 변경 ${promptCount}건`
-        : "주요 프롬프트 변경 없음";
-    return `${cli}, ${flag}, ${prompt}.`;
+    return cliCount > 0 ? `CLI ${cliCount}건.` : "CLI 없음.";
   }
 
-  const cli = cliCount > 0 ? `${cliCount} CLI` : "no CLI";
-  const flag = flagCount > 0 ? `${flagCount} flag` : "no flag";
-  const prompt =
-    promptCount > 0 ? `${promptCount} major prompt` : "no major prompt";
-  return `${cli}, ${flag}, ${prompt} changes.`;
+  return cliCount > 0 ? `${cliCount} CLI changes.` : "no CLI changes.";
 }
 
 interface ReplyBlockConfig {
@@ -235,51 +199,7 @@ function buildCliReplyBlocks(
     title: `Claude Code CLI ${version} ${msg.changelog}`,
     content: cliChanges.map((c) => `• ${c}`).join("\n"),
     compareUrl,
-    repoPath: REPO_PATHS.CLI,
-    language,
-  });
-}
-
-function buildPromptReplyBlocks(
-  version: string,
-  promptChanges: string[],
-  compareUrl: string,
-  language: Language,
-): KnownBlock[] {
-  const msg = MESSAGES[language];
-  return buildReplyBlocks({
-    title: `Claude Code ${version} ${msg.promptChanges} ${msg.changes}`,
-    content: promptChanges.map((c) => `• ${c}`).join("\n"),
-    compareUrl,
-    repoPath: REPO_PATHS.CHANGELOG,
-    language,
-  });
-}
-
-function buildFlagReplyBlocks(
-  version: string,
-  flagChanges: ChangeSummary["flagChanges"],
-  compareUrl: string,
-  language: Language,
-): KnownBlock[] {
-  const msg = MESSAGES[language];
-  const lines: string[] = [];
-
-  if (flagChanges.added.length > 0) {
-    lines.push(`*${msg.added}:* ${flagChanges.added.join(", ")}`);
-  }
-  if (flagChanges.removed.length > 0) {
-    lines.push(`*${msg.removed}:* ${flagChanges.removed.join(", ")}`);
-  }
-  if (flagChanges.modified.length > 0) {
-    lines.push(`*${msg.modified}:* ${flagChanges.modified.join(", ")}`);
-  }
-
-  return buildReplyBlocks({
-    title: `Claude Code ${version} ${msg.flagChanges} ${msg.changes}`,
-    content: lines.join("\n"),
-    compareUrl,
-    repoPath: REPO_PATHS.CHANGELOG,
+    repoPath: REPO_PATH,
     language,
   });
 }
@@ -313,7 +233,6 @@ export async function postThreadedChangelog(
   channelId: string,
   version: string,
   summary: ChangeSummary,
-  compareUrl: string,
   cliCompareUrl: string,
   language: Language,
 ): Promise<void> {
@@ -337,33 +256,6 @@ export async function postThreadedChangelog(
     );
     await postMessage(client, channelId, cliBlocks, threadTs);
   }
-
-  const hasFlags =
-    summary.flagChanges.added.length > 0 ||
-    summary.flagChanges.removed.length > 0 ||
-    summary.flagChanges.modified.length > 0;
-
-  if (hasFlags) {
-    await delay(MESSAGE_DELAY_MS);
-    const flagBlocks = buildFlagReplyBlocks(
-      version,
-      summary.flagChanges,
-      compareUrl,
-      language,
-    );
-    await postMessage(client, channelId, flagBlocks, threadTs);
-  }
-
-  if (summary.promptChanges.length > 0) {
-    await delay(MESSAGE_DELAY_MS);
-    const promptBlocks = buildPromptReplyBlocks(
-      version,
-      summary.promptChanges,
-      compareUrl,
-      language,
-    );
-    await postMessage(client, channelId, promptBlocks, threadTs);
-  }
 }
 
 export async function sendWorkspaceNotification(
@@ -380,7 +272,6 @@ export async function sendWorkspaceNotification(
       workspace.channelId,
       message.version,
       message.summary,
-      message.compareUrl,
       message.cliCompareUrl,
       workspace.language,
     );

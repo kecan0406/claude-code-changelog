@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Claude Code Changelog Bot - Multi-workspace Slack notification bot that monitors two GitHub repositories for Claude Code release changes and sends formatted notifications to multiple Slack workspaces. Uses Claude API to generate intelligent summaries in English and Korean.
+Claude Code Changelog Bot - Multi-workspace Slack notification bot that monitors `anthropics/claude-code` GitHub releases and sends formatted notifications to multiple Slack workspaces. Uses Claude API to generate intelligent summaries in English and Korean.
 
 ## Commands
 
@@ -24,22 +24,17 @@ The project runs in two distinct modes:
 
 2. **Vercel Serverless** (`api/`): Handles OAuth installation (`api/oauth/`), Slack slash commands (`api/slack/commands.ts` for `/changelog-lang`, `api/slack/changelog.ts` for `/changelog`), and manual triggers (`api/cron/notify.ts`). Functions are constrained to 256MB memory and 30s max duration (`vercel.json`).
 
-### Dual Source Monitoring
+### Single Source Monitoring
 
-The bot monitors two separate GitHub repositories:
-
-- **`marckrenn/claude-code-changelog`**: Tracks `cc-prompt.md` (system prompt) and `cc-flags.md` (feature flags) changes between version tags. Changes are fetched via GitHub compare API.
-- **`anthropics/claude-code`**: Fetches CLI changelog (`CHANGELOG.md`) for the corresponding version section.
-
-Both are merged into a single `ChangeSummary` for each notification.
+The bot monitors **`anthropics/claude-code`** via GitHub Releases API for new version detection and fetches the CLI changelog (`CHANGELOG.md`) for the corresponding version section.
 
 ### AI Summary Generation (`services/claude.ts`)
 
-Uses Claude Haiku 4.5 with `tool_use` for structured output. The `submit_changelog_summary` tool forces the model to return a typed `ChangeSummary` object. Prompt templates and tool descriptions are defined per-language (en/ko) with XML-formatted input. Korean output is validated via Hangul character ratio check (`utils/language.ts`).
+Uses Claude Haiku 4.5 with `tool_use` for structured output. The `submit_changelog_summary` tool forces the model to return a typed `ChangeSummary` object (`summary` + `cliChanges`). Prompt templates and tool descriptions are defined per-language (en/ko) with XML-formatted input. Korean output is validated via Hangul character ratio check (`utils/language.ts`).
 
 ### Notification Flow (`services/slack.ts`)
 
-Notifications are posted as threaded Slack messages: main message with version + AI summary, then thread replies for CLI changes, flag changes, and prompt changes. Rate limited at 1.1s between messages, with 10-workspace concurrency batching.
+Notifications are posted as threaded Slack messages: main message with version + AI summary, then a thread reply for CLI changes. Rate limited at 1.1s between messages, with 10-workspace concurrency batching.
 
 ### Caching & State
 

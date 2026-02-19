@@ -6,8 +6,7 @@ import { getWorkspaceByTeamId } from "../../src/db/workspaces.js";
 import { getLastCheckedVersion } from "../../src/db/state.js";
 import { summaryCache } from "../../src/cache/index.js";
 import {
-  getLatestTag,
-  getChangelogDiff,
+  getLatestRelease,
   getCliChangelog,
   findPreviousTag,
   GITHUB_DEFAULTS,
@@ -84,15 +83,8 @@ const ASYNC_TIMEOUT_MS = 25_000;
 
 function getGitHubConfig() {
   return {
-    upstream: {
-      upstreamOwner:
-        process.env.UPSTREAM_OWNER || GITHUB_DEFAULTS.UPSTREAM_OWNER,
-      upstreamRepo: process.env.UPSTREAM_REPO || GITHUB_DEFAULTS.UPSTREAM_REPO,
-    },
-    cli: {
-      cliRepoOwner: GITHUB_DEFAULTS.CLI_REPO_OWNER,
-      cliRepoName: GITHUB_DEFAULTS.CLI_REPO_NAME,
-    },
+    cliRepoOwner: GITHUB_DEFAULTS.CLI_REPO_OWNER,
+    cliRepoName: GITHUB_DEFAULTS.CLI_REPO_NAME,
   };
 }
 
@@ -155,11 +147,9 @@ async function generateAndPostThread(
   const ghConfig = getGitHubConfig();
   const fromVersion = findPreviousTag(version);
 
-  const diff = await getChangelogDiff(ghConfig.upstream, fromVersion, version);
-
   let cliResult: { changes: string[]; compareUrl: string };
   try {
-    cliResult = await getCliChangelog(ghConfig.cli, version);
+    cliResult = await getCliChangelog(ghConfig, version);
   } catch {
     logger.warn(
       `CLI changelog fetch failed for ${version}, proceeding without CLI data`,
@@ -170,7 +160,8 @@ async function generateAndPostThread(
   const summary = await generateSummary(
     anthropicApiKey,
     language,
-    diff,
+    fromVersion,
+    version,
     cliResult.changes,
   );
 
@@ -181,7 +172,6 @@ async function generateAndPostThread(
     channelId,
     version,
     summary,
-    diff.compareUrl,
     cliResult.compareUrl,
     language,
   );
@@ -248,12 +238,12 @@ export default async function handler(
     let version = await getLastCheckedVersion();
 
     if (!version) {
-      const latestTag = await getLatestTag(ghConfig.upstream);
-      if (!latestTag) {
+      const latestRelease = await getLatestRelease(ghConfig);
+      if (!latestRelease) {
         res.status(200).json({ response_type: "ephemeral", text: msg.noData });
         return;
       }
-      version = latestTag.name;
+      version = latestRelease.name;
     }
 
     const targetChannelId =
@@ -267,9 +257,7 @@ export default async function handler(
     if (cachedSummary) {
       logger.info(`/changelog cache hit for ${version}:${language}`);
 
-      const fromVersion = findPreviousTag(version);
-      const compareUrl = `https://github.com/${ghConfig.upstream.upstreamOwner}/${ghConfig.upstream.upstreamRepo}/compare/${fromVersion}...${version}`;
-      const cliCompareUrl = `https://github.com/${ghConfig.cli.cliRepoOwner}/${ghConfig.cli.cliRepoName}/releases/tag/${version}`;
+      const cliCompareUrl = `https://github.com/${ghConfig.cliRepoOwner}/${ghConfig.cliRepoName}/releases/tag/${version}`;
 
       // Return immediate ack, post thread asynchronously
       res.status(200).json({ response_type: "in_channel", text: msg.posting });
@@ -281,7 +269,6 @@ export default async function handler(
             targetChannelId,
             version,
             cachedSummary,
-            compareUrl,
             cliCompareUrl,
             language,
           ),
